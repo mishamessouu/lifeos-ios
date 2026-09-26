@@ -248,7 +248,7 @@ final class AppModel {
         guard !trimmed.isEmpty else { return }
         do {
             try await queue.enqueue(text: trimmed, answers: answers)
-        } catch ClientError.invalid {
+        } catch ClientError.invalid(_) {
             status = Copy.tooLong
             return
         } catch {
