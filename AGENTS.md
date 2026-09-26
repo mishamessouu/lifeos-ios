@@ -11,7 +11,8 @@ The iPhone app for LifeOS. Public repository, MIT.
 - No secrets, and nothing shaped like one.
 - Every rule goes in `Package/` (LifeOSKit), with a test. The app under
   `App/` stays thin: views and platform calls only.
-- Run `swift build` and `swift test` in `Package/` before every commit.
+- Run `scripts/check.sh`, then `swift build` and `swift test` in
+  `Package/`, before every commit.
 - Edit `project.yml`, never `LifeOS.xcodeproj`. Run `xcodegen generate`
   and commit both.
 - Use the LifeOS words: Channel, Sent message, Finding, Digest, Question,

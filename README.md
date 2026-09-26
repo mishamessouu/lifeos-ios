@@ -30,7 +30,8 @@ TestFlight. GitHub holds no signing secret.
   Xcode Cloud.
 - `docs/design.md` names each borrowed design pattern and its source.
   `docs/xcode-cloud.md` is the one-time Xcode Cloud setup.
-- `scripts/make-icon.py` draws the app icon.
+- `scripts/make-icon.py` draws the app icon. `scripts/check.sh` fails on
+  an em dash or an email address in any tracked file.
 
 ## Test the package
 

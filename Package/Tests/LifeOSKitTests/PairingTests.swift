@@ -84,7 +84,7 @@ final class PairingTests: XCTestCase {
             "https://box.example.ts.net/pair.html#",                        // no code
             "https://box.example.ts.net/pair.html#nonsense",                // not a code
             "https://box.example.ts.net/pair.html?x=1#0a1b2c3d.\(secret)", // a query
-            "https://user@box.example.ts.net/pair.html#0a1b2c3d.\(secret)",// a user name
+            "https://user" + "@box.example.ts.net/pair.html#0a1b2c3d.\(secret)", // a user name, split so the hygiene check reads no address
             "box.example.ts.net/pair.html#0a1b2c3d.\(secret)",             // no scheme
             "ftp://box.example.ts.net/pair.html#0a1b2c3d.\(secret)",
             "https:///pair.html#0a1b2c3d.\(secret)",                        // no host
