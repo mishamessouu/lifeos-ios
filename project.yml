@@ -1,0 +1,126 @@
+# XcodeGen spec. Generate the project from the repository root with:
+#   xcodegen generate
+# Commit project.yml and LifeOS.xcodeproj together. Never edit the project by hand.
+name: LifeOS
+options:
+  bundleIdPrefix: io.github.mishamessouu
+  deploymentTarget:
+    iOS: "17.0"
+  xcodeVersion: "16.0"
+  developmentLanguage: sv
+  createIntermediateGroups: true
+  generateEmptyDirectories: false
+
+configFiles:
+  Debug: Config/Team.xcconfig
+  Release: Config/Team.xcconfig
+
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    # Scaffolding for the first build, which no Mac has compiled yet: Swift 5
+    # mode with minimal concurrency checks. Raise both once Xcode Cloud builds
+    # the app clean. See docs/handover.md.
+    SWIFT_STRICT_CONCURRENCY: minimal
+    CODE_SIGN_STYLE: Automatic
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    TARGETED_DEVICE_FAMILY: "1"
+
+packages:
+  LifeOSKit:
+    path: Package
+
+targets:
+  LifeOS:
+    type: application
+    platform: iOS
+    sources:
+      - path: App/LifeOS
+    dependencies:
+      - package: LifeOSKit
+      - target: LifeOSNotificationService
+    info:
+      path: App/LifeOS/Info.plist
+      properties:
+        CFBundleDisplayName: LifeOS
+        CFBundleDevelopmentRegion: sv
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        LSRequiresIPhoneOS: true
+        ITSAppUsesNonExemptEncryption: false
+        UILaunchScreen: {}
+        UIApplicationSupportsIndirectInputEvents: true
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+    entitlements:
+      path: App/LifeOS/LifeOS.entitlements
+      properties:
+        aps-environment: production
+        com.apple.security.application-groups:
+          - group.io.github.mishamessouu.lifeos
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.github.mishamessouu.lifeos
+        PRODUCT_NAME: LifeOS
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+
+  LifeOSNotificationService:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: App/NotificationService
+    info:
+      path: App/NotificationService/Info.plist
+      properties:
+        CFBundleDisplayName: LifeOS
+        CFBundleDevelopmentRegion: sv
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.usernotifications.service
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).NotificationService
+    entitlements:
+      path: App/NotificationService/LifeOSNotificationService.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.io.github.mishamessouu.lifeos
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.github.mishamessouu.lifeos.notification
+        PRODUCT_NAME: LifeOSNotificationService
+
+  LifeOSUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: App/UITests
+    dependencies:
+      - target: LifeOS
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.github.mishamessouu.lifeos.uitests
+        GENERATE_INFOPLIST_FILE: YES
+
+schemes:
+  LifeOS:
+    build:
+      targets:
+        LifeOS: all
+    run:
+      config: Debug
+    test:
+      config: Debug
+      gatherCoverageData: false
+      targets:
+        - package: LifeOSKit/LifeOSKitTests
+        - name: LifeOSUITests
+    profile:
+      config: Release
+    analyze:
+      config: Debug
+    archive:
+      config: Release

@@ -1,0 +1,34 @@
+# Runs the LifeOSKit tests on Linux for every pull request and every push to
+# main. It holds no secret and uses no pull_request_target, so a fork gets
+# the tests and nothing else (threat model item O7).
+name: test
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      # actions/checkout v6.1.0
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      # swift-actions/setup-swift v2.4.0
+      - uses: swift-actions/setup-swift@7ca6abe6b3b0e8b5421b88be48feee39cbf52c6a
+        with:
+          swift-version: "6.2"
+      - name: Hygiene
+        run: scripts/check.sh
+      - name: Build
+        working-directory: Package
+        run: swift build
+      - name: Test
+        working-directory: Package
+        run: swift test
