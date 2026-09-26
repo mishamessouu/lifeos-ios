@@ -5,7 +5,7 @@ import XCTest
 final class ModelTests: XCTestCase {
     func testEveryKindHasASwedishLabelAndASymbol() {
         let kinds: [Kind] = [.finding, .digest, .question, .answer, .note, .notice, .other("x")]
-        XCTAssertEqual(kinds.map(\.label), ["Fynd", "Dagens fokus", "Fråga", "Svar", "Notis", "Varning", "Meddelande"])
+        XCTAssertEqual(kinds.map(\.label), ["Fynd", "Dagens fokus", "Fråga", "Svar", "Anteckning", "Varning", "Meddelande"])
         XCTAssertTrue(kinds.allSatisfy { !$0.symbol.isEmpty })
         for kind in kinds {
             XCTAssertEqual(Kind(rawValue: kind.rawValue), kind)
@@ -48,6 +48,17 @@ final class ModelTests: XCTestCase {
         XCTAssertNil(KernelTime.parse(""))
         let now = Date(timeIntervalSince1970: 1_767_225_600.5)
         XCTAssertEqual(KernelTime.parse(KernelTime.format(now)), now)
+    }
+
+    func testPythonIsoformatTimes() {
+        // datetime.isoformat() writes six digits of fraction, or none.
+        let six = KernelTime.parse("2026-01-01T00:00:00.123456+00:00")
+        XCTAssertEqual(six?.timeIntervalSince1970 ?? 0, 1_767_225_600.123, accuracy: 0.0005)
+        XCTAssertEqual(KernelTime.parse("2026-01-01T00:00:00+00:00"), Date(timeIntervalSince1970: 1_767_225_600))
+        let one = KernelTime.parse("2026-01-01T01:00:00.5+01:00")
+        XCTAssertEqual(one?.timeIntervalSince1970 ?? 0, 1_767_225_600.5, accuracy: 0.0005)
+        XCTAssertEqual(KernelTime.threeDigitFraction("2026-01-01T00:00:00.123456Z"), "2026-01-01T00:00:00.123Z")
+        XCTAssertEqual(KernelTime.threeDigitFraction("2026-01-01T00:00:00Z"), "2026-01-01T00:00:00Z")
     }
 
     func testAMissingKindOrTextStillDecodes() throws {

@@ -106,6 +106,22 @@ final class DayGroupTests: XCTestCase {
         XCTAssertEqual(Set(groups.map(\.id)).count, groups.count)
     }
 
+    func testAGroupIdComesFromTheDayNotTheFirstItem() {
+        let now = KernelTime.parse("2026-03-04T12:00:00+01:00")!
+        let before = DayGroup.group([item("a", "2026-03-04T09:00:00+01:00")], date: \.at, now: now, calendar: calendar)
+        let after = DayGroup.group([item("new", "2026-03-04T11:00:00+01:00"), item("a", "2026-03-04T09:00:00+01:00")],
+                                   date: \.at, now: now, calendar: calendar)
+        XCTAssertEqual(before.first?.id, after.first?.id)
+    }
+
+    func testADayMetTwiceGetsTwoIds() {
+        let now = KernelTime.parse("2026-03-04T12:00:00+01:00")!
+        let groups = DayGroup.group([item("a", nil), item("b", "2026-03-04T09:00:00+01:00"), item("c", nil)],
+                                    date: \.at, now: now, calendar: calendar)
+        XCTAssertEqual(groups.count, 3)
+        XCTAssertEqual(Set(groups.map(\.id)).count, 3)
+    }
+
     func testNoItemsNoGroups() {
         XCTAssertTrue(DayGroup<SentMessage>.group([], date: \.at).isEmpty)
     }

@@ -43,16 +43,18 @@ public struct TransportFailure: Error, Sendable, Hashable {
 /// The real transport. It keeps no cookies and no cache: the token is the check.
 public final class URLSessionTransport: Transport, @unchecked Sendable {
     // URLSession is thread safe; `@unchecked` because it is not marked Sendable on every platform.
-    private let session: URLSession
+    let session: URLSession
 
-    public init(timeout: TimeInterval = 20) {
+    /// `protocolClasses` lets a test answer requests without a network.
+    public init(timeout: TimeInterval = 20, protocolClasses: [AnyClass]? = nil) {
         let configuration = URLSessionConfiguration.ephemeral
+        if let protocolClasses { configuration.protocolClasses = protocolClasses }
         configuration.timeoutIntervalForRequest = timeout
         configuration.httpCookieStorage = nil
         configuration.httpShouldSetCookies = false
         configuration.urlCache = nil
         configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
-        session = URLSession(configuration: configuration)
+        session = URLSession(configuration: configuration, delegate: NoRedirects(), delegateQueue: nil)
     }
 
     public func send(_ request: HTTPRequest) async throws -> HTTPResponse {
@@ -77,5 +79,20 @@ public final class URLSessionTransport: Transport, @unchecked Sendable {
             }
             task.resume()
         }
+    }
+}
+
+/// Refuses every redirect. The app talks to one kernel address, and a
+/// redirect must not carry the bearer token anywhere else. The 3xx answer
+/// comes back as it is, and the client reads it as a server error.
+final class NoRedirects: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
+    func urlSession(
+        _ session: URLSession,
+        task: URLSessionTask,
+        willPerformHTTPRedirection response: HTTPURLResponse,
+        newRequest request: URLRequest,
+        completionHandler: @escaping @Sendable (URLRequest?) -> Void
+    ) {
+        completionHandler(nil)
     }
 }

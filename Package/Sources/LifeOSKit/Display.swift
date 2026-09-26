@@ -111,12 +111,18 @@ public struct DayGroup<Item: Identifiable & Hashable & Sendable>: Identifiable, 
     public let title: String
     public let items: [Item]
 
-    public var id: String { items.first.map { "day-\($0.id)" } ?? title }
+    /// Built from the day, so a new message on top does not change it.
+    public let id: String
 
-    public init(day: Date?, title: String, items: [Item]) {
+    public init(day: Date?, title: String, items: [Item], id: String? = nil) {
         self.day = day
         self.title = title
         self.items = items
+        self.id = id ?? DayGroup.key(day)
+    }
+
+    static func key(_ day: Date?) -> String {
+        day.map { "day-\(Int($0.timeIntervalSince1970))" } ?? "day-none"
     }
 
     /// Keeps the order it is given. A new group starts whenever the day changes.
@@ -126,9 +132,15 @@ public struct DayGroup<Item: Identifiable & Hashable & Sendable>: Identifiable, 
         var groups: [DayGroup] = []
         var current: [Item] = []
         var currentDay: Date?
+        var used: [String: Int] = [:]
         func close() {
             guard !current.isEmpty else { return }
-            groups.append(DayGroup(day: currentDay, title: title(for: currentDay, now: now, calendar: calendar), items: current))
+            // A day met twice, out of order, gets a suffix so ids stay unique.
+            let key = DayGroup.key(currentDay)
+            let count = used[key, default: 0]
+            used[key] = count + 1
+            let id = count == 0 ? key : "\(key)-\(count)"
+            groups.append(DayGroup(day: currentDay, title: title(for: currentDay, now: now, calendar: calendar), items: current, id: id))
             current = []
         }
         for item in items {

@@ -38,6 +38,41 @@ final class CursorTests: XCTestCase {
         XCTAssertEqual(list.items[1].text, "new")
     }
 
+    func testALateSettledMessageBelowAHeldOneIsKept() {
+        var list = CursorList(items: [message("b")], next: nil)
+        list.mergeNewest(page(["b", "a"], next: nil))
+        XCTAssertEqual(ids(list), ["b", "a"])
+    }
+
+    func testLateMessagesKeepTheirPlaceAmongHeldOnes() {
+        // Held c, b, a. The kernel now also lists x between c and b, and y at the top.
+        var list = CursorList(items: [message("c"), message("b"), message("a")], next: "a")
+        list.mergeNewest(page(["y", "c", "x", "b"], next: "b"))
+        XCTAssertEqual(ids(list), ["y", "c", "x", "b", "a"])
+        XCTAssertEqual(list.next, "a")
+    }
+
+    func testHeldItemsThePageSkipsStayAfterWhatTheyFollowed() {
+        var list = CursorList(items: [message("c"), message("b"), message("a")], next: nil)
+        list.mergeNewest(page(["d", "c", "a"], next: nil))
+        XCTAssertEqual(ids(list), ["d", "c", "b", "a"])
+    }
+
+    func testAnEmptyPageKeepsTheHeldItems() {
+        var list = CursorList(items: [message("2"), message("1")], next: "1")
+        XCTAssertTrue(list.joins(page([], next: nil)))
+        list.mergeNewest(page([], next: nil))
+        XCTAssertEqual(ids(list), ["2", "1"])
+        XCTAssertEqual(list.next, "1")
+    }
+
+    func testAnEmptyPageOnAnEmptyListStaysEmpty() {
+        var list = CursorList<SentMessage>()
+        list.mergeNewest(page([], next: nil))
+        XCTAssertTrue(list.items.isEmpty)
+        XCTAssertFalse(list.hasMore)
+    }
+
     func testDuplicatesInAPageAreDropped() {
         var list = CursorList<SentMessage>()
         list.mergeNewest(page(["3", "3", "2", "1", "2"], next: nil))

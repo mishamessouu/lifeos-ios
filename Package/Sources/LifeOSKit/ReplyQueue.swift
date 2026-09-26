@@ -100,7 +100,9 @@ public actor ReplyQueue {
                 }
             } catch let error as ClientError {
                 update(reply.id) { $0.attempts += 1 }
-                if error.isRetryable || error == .notPaired {
+                if error.isRetryable || error == .notPaired || error == .unreadable {
+                    // A 2xx the app cannot read may have been taken. Keep the
+                    // reply unsent with its id; a resend is taken once.
                     stop = error
                 } else {
                     // The kernel will not take this reply as written; resending changes nothing.
@@ -130,6 +132,19 @@ public actor ReplyQueue {
         await flush { reply in
             try await client.reply(id: reply.id, text: reply.text, answers: reply.answers)
         }
+    }
+
+    /// Marks a refused reply unsent again, with the same id, so the next
+    /// flush sends it. Returns false when no refused reply has that id.
+    @discardableResult
+    public func requeue(id: String) throws -> Bool {
+        guard let index = replies.firstIndex(where: { $0.id == id }), replies[index].state == .refused else {
+            return false
+        }
+        replies[index].state = .unsent
+        replies[index].reason = nil
+        try persist()
+        return true
     }
 
     /// Drops a reply the person gave up on.

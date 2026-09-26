@@ -29,24 +29,47 @@ where Item.ID == String {
 
     /// Merges pages fetched from the top, newest page first.
     ///
-    /// - When they meet a held id, new items go on top and held items stay,
-    ///   with newer copies of them from the pages. `next` does not change.
-    /// - When they do not meet one, the held items cannot join up with them,
-    ///   so the list starts over from the pages. Older items load again by
+    /// - When they share an id with the held items, every item keeps its
+    ///   place: each fetched item sits where the pages put it, and each held
+    ///   item the pages do not carry stays after the fetched item it followed
+    ///   before. So a message the kernel settled late, older than one already
+    ///   held, is kept. Newer copies replace held ones. `next` does not change.
+    /// - When they share no id, the held items cannot join up with them, so
+    ///   the list starts over from the pages. Older items load again by
     ///   scrolling.
+    /// - Pages with no items change nothing. A held list is never emptied by
+    ///   an empty answer.
     public mutating func mergeNewest(_ pages: [Page<Item>]) {
         guard let last = pages.last else { return }
         let fetched = CursorList.unique(pages.flatMap(\.items))
-        let held = Set(items.map(\.id))
-        guard !items.isEmpty,
-              let meet = fetched.firstIndex(where: { held.contains($0.id) })
-        else {
+        guard !fetched.isEmpty else {
+            if items.isEmpty { next = last.next }
+            return
+        }
+        let heldIndex = Dictionary(items.enumerated().map { ($1.id, $0) }, uniquingKeysWith: { first, _ in first })
+        guard !items.isEmpty, fetched.contains(where: { heldIndex[$0.id] != nil }) else {
             items = fetched
             next = last.next
             return
         }
-        let updates = Dictionary(fetched[meet...].map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-        items = Array(fetched[..<meet]) + items.map { updates[$0.id] ?? $0 }
+        let fetchedIDs = Set(fetched.map(\.id))
+        var merged: [Item] = []
+        var cursor = 0  // the first held index not yet placed
+        func placeHeld(upTo end: Int) {
+            while cursor < end {
+                if !fetchedIDs.contains(items[cursor].id) { merged.append(items[cursor]) }
+                cursor += 1
+            }
+        }
+        for item in fetched {
+            if let index = heldIndex[item.id], index >= cursor {
+                placeHeld(upTo: index)
+                cursor = index + 1
+            }
+            merged.append(item)
+        }
+        placeHeld(upTo: items.count)
+        items = merged
     }
 
     public mutating func mergeNewest(_ page: Page<Item>) {

@@ -145,14 +145,46 @@ final class ReplyQueueTests: XCTestCase {
         XCTAssertEqual(state, .unsent)
     }
 
-    func testAnUnreadableAnswerRefusesInsteadOfLooping() async throws {
-        let queue = ReplyQueue(directory: temporaryDirectory())
-        try await queue.enqueue(text: "x", answers: nil)
-        let fake = FakeTransport(status: 200, body: "<html>")
+    func testAnUnreadableTwoHundredKeepsTheReplyUnsentWithItsId() async throws {
+        let directory = temporaryDirectory()
+        let queue = ReplyQueue(directory: directory)
+        let reply = try await queue.enqueue(text: "x", answers: nil)
+        try await queue.enqueue(text: "y", answers: nil)
+        let fake = FakeTransport([.answer(200, "<html>"), .answer(200, #"{"ok": true, "taken": true}"#), .answer(200, #"{"ok": true, "taken": true}"#)])
         let stop = await queue.flush(using: client(fake))
-        XCTAssertNil(stop)
-        let state = await queue.all.first?.state
-        XCTAssertEqual(state, .refused)
+        XCTAssertEqual(stop, .unreadable)
+        let states = await queue.all.map(\.state)
+        XCTAssertEqual(states, [.unsent, .unsent])
+        // The next flush resends the same id, and the order holds.
+        await ReplyQueue(directory: directory).flush(using: client(fake))
+        let ids = fake.sent.map { json($0.body)["id"] as? String }
+        XCTAssertEqual(ids[0], reply.id)
+        XCTAssertEqual(ids[1], reply.id)
+        XCTAssertEqual(fake.sent.count, 3)
+    }
+
+    func testRequeueResendsARefusedReplyWithTheSameId() async throws {
+        let queue = ReplyQueue(directory: temporaryDirectory())
+        let reply = try await queue.enqueue(text: "x", answers: nil)
+        let fake = FakeTransport([
+            .answer(200, #"{"ok": true, "taken": false, "reason": "Upptagen."}"#),
+            .answer(200, #"{"ok": true, "taken": true}"#),
+        ])
+        await queue.flush(using: client(fake))
+        let requeued = try await queue.requeue(id: reply.id)
+        XCTAssertTrue(requeued)
+        let again = await queue.all.first
+        XCTAssertEqual(again?.state, .unsent)
+        XCTAssertNil(again?.reason)
+        await queue.flush(using: client(fake))
+        XCTAssertEqual(fake.sent.map { json($0.body)["id"] as? String }, [reply.id, reply.id])
+        let final = await queue.all
+        XCTAssertEqual(final.count, 1)
+        XCTAssertEqual(final.first?.state, .sent)
+        let notRefused = try await queue.requeue(id: reply.id)
+        XCTAssertFalse(notRefused)
+        let missing = try await queue.requeue(id: "missing-id")
+        XCTAssertFalse(missing)
     }
 
     func testASentReplyIsNeverSentAgain() async throws {

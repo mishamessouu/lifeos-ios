@@ -42,7 +42,7 @@ public enum Kind: Hashable, Sendable, Codable {
         case .digest: "Dagens fokus"
         case .question: "Fråga"
         case .answer: "Svar"
-        case .note: "Notis"
+        case .note: "Anteckning"
         case .notice: "Varning"
         case .other: "Meddelande"
         }
