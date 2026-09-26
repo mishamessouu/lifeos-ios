@@ -66,6 +66,50 @@ final class ReplyQueueTests: XCTestCase {
         XCTAssertEqual(reply?.reason, "Too many replies.")
     }
 
+    func testAReplyToAClosedMessageIsRefusedWithTheKernelSentence() async throws {
+        let queue = ReplyQueue(directory: temporaryDirectory())
+        try await queue.enqueue(text: "läst 2", answers: "m-old")
+        let fake = FakeTransport(status: 200, body: #"{"ok": true, "taken": false, "reason": "Meddelandet går inte längre att svara på."}"#)
+        let stop = await queue.flush(using: client(fake))
+        XCTAssertNil(stop)
+        let reply = await queue.all.first
+        XCTAssertEqual(reply?.state, .refused)
+        XCTAssertEqual(reply?.reason, "Meddelandet går inte längre att svara på.")
+        let unsent = await queue.unsent
+        XCTAssertTrue(unsent.isEmpty)
+    }
+
+    func testEmptyAndOversizedRepliesNeverEnterTheQueue() async throws {
+        let queue = ReplyQueue(directory: temporaryDirectory())
+        do {
+            try await queue.enqueue(text: "  \n ", answers: nil)
+            XCTFail("An empty reply was queued.")
+        } catch {
+            XCTAssertEqual(error as? ClientError, .invalid("The reply is empty."))
+        }
+        do {
+            try await queue.enqueue(text: String(repeating: "a", count: Client.maxTextBytes + 1), answers: nil)
+            XCTFail("An oversized reply was queued.")
+        } catch {
+            XCTAssertEqual(error as? ClientError, .invalid("The text is longer than 64 KiB."))
+        }
+        let all = await queue.all
+        XCTAssertTrue(all.isEmpty)
+    }
+
+    func testAnInvalidReplyInTheFileIsRefusedWithTheWords() async throws {
+        let directory = temporaryDirectory()
+        let bad = OutboundReply(id: "short", text: "x", answers: nil)
+        try JSONFile<[OutboundReply]>(directory: directory, name: "replies.json").save([bad])
+        let queue = ReplyQueue(directory: directory)
+        let fake = FakeTransport([])
+        await queue.flush(using: client(fake))
+        let reply = await queue.all.first
+        XCTAssertEqual(reply?.state, .refused)
+        XCTAssertEqual(reply?.reason, "A reply id is 8 to 64 letters, digits, or hyphens.")
+        XCTAssertTrue(fake.sent.isEmpty)
+    }
+
     func testAFourHundredRefusesAndTheNextReplyStillGoes() async throws {
         let queue = ReplyQueue(directory: temporaryDirectory())
         try await queue.enqueue(text: "bad", answers: nil)

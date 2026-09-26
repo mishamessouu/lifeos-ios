@@ -25,6 +25,17 @@ public enum RowTime {
         return formatter.string(from: date)
     }
 
+    /// The clock time alone, for a row under a day header.
+    public static func clock(for date: Date?, calendar: Calendar = RowTime.calendar) -> String {
+        guard let date else { return "" }
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "sv_SE")
+        formatter.calendar = calendar
+        formatter.timeZone = calendar.timeZone
+        formatter.dateFormat = "HH:mm"
+        return formatter.string(from: date)
+    }
+
     /// The whole time, for a detail view: "3 mars 2026 kl. 14:05".
     public static func full(for date: Date?, calendar: Calendar = RowTime.calendar) -> String {
         guard let date else { return "" }

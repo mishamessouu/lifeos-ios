@@ -24,6 +24,11 @@ final class DisplayTests: XCTestCase {
         XCTAssertEqual(RowTime.text(for: nil, now: now, calendar: calendar), "")
     }
 
+    func testClockTime() {
+        XCTAssertEqual(RowTime.clock(for: date("2026-03-04T14:05:00+01:00"), calendar: calendar), "14:05")
+        XCTAssertEqual(RowTime.clock(for: nil, calendar: calendar), "")
+    }
+
     func testFullTime() {
         XCTAssertEqual(RowTime.full(for: date("2026-03-04T14:05:00+01:00"), calendar: calendar), "4 mars 2026 kl. 14:05")
         XCTAssertEqual(RowTime.full(for: nil, calendar: calendar), "")

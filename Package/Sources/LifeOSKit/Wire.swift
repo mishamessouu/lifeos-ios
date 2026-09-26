@@ -25,20 +25,31 @@ enum Wire {
         init(from decoder: Decoder) throws {}
     }
 
-    struct ItemsPage: Decodable {
-        let items: Lossy<SentMessage>
+    /// The Channel page. The kernel names the list `messages`; an early
+    /// draft named it `items`, and both are read.
+    struct MessagesPage: Decodable {
+        let messages: [SentMessage]
         let next: String?
 
-        enum CodingKeys: String, CodingKey { case items, next }
+        enum CodingKeys: String, CodingKey { case messages, items, next }
 
         init(from decoder: Decoder) throws {
             let c = try decoder.container(keyedBy: CodingKeys.self)
-            items = try c.decode(Lossy<SentMessage>.self, forKey: .items)
+            if let messages = try c.decodeIfPresent(Lossy<SentMessage>.self, forKey: .messages) {
+                self.messages = messages.elements
+            } else if let items = try c.decodeIfPresent(Lossy<SentMessage>.self, forKey: .items) {
+                self.messages = items.elements
+            } else {
+                throw DecodingError.keyNotFound(
+                    CodingKeys.messages,
+                    .init(codingPath: c.codingPath, debugDescription: "No messages list.")
+                )
+            }
             next = try c.decodeIfPresent(LooseID.self, forKey: .next)?.value
         }
     }
 
-    /// The Terminal page. The kernel may name the list `turns` or `messages`.
+    /// The Terminal page. The kernel names the list `turns`; `messages` is read too.
     struct TurnsPage: Decodable {
         let turns: [TerminalTurn]
         let next: String?

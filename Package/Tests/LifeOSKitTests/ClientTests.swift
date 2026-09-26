@@ -53,7 +53,7 @@ final class ClientTests: XCTestCase {
 
     func testReplySendsTheBodyAndTheBearer() async throws {
         let fake = FakeTransport(status: 200, body: #"{"ok": true, "taken": true}"#)
-        let answer = try await client(fake).reply(id: "r-1", text: "läst 2", answers: "m-9")
+        let answer = try await client(fake).reply(id: "reply-0001", text: "läst 2", answers: "m-9")
         XCTAssertEqual(answer, ReplyAnswer(taken: true))
         let request = try XCTUnwrap(fake.sent.first)
         XCTAssertEqual(request.method, "POST")
@@ -62,14 +62,14 @@ final class ClientTests: XCTestCase {
         XCTAssertEqual(request.headers["Accept"], "application/json")
         let body = json(request.body)
         XCTAssertEqual(body["channel"] as? String, "app")
-        XCTAssertEqual(body["id"] as? String, "r-1")
+        XCTAssertEqual(body["id"] as? String, "reply-0001")
         XCTAssertEqual(body["text"] as? String, "läst 2")
         XCTAssertEqual(body["answers"] as? String, "m-9")
     }
 
     func testReplyWithoutAnswersSendsJSONNull() async throws {
         let fake = FakeTransport(status: 200, body: #"{"ok": true, "taken": true}"#)
-        _ = try await client(fake).reply(id: "r-1", text: "hej", answers: nil)
+        _ = try await client(fake).reply(id: "reply-0001", text: "hej", answers: nil)
         let body = try XCTUnwrap(fake.sent.first?.body)
         let text = try XCTUnwrap(String(data: body, encoding: .utf8))
         XCTAssertTrue(text.contains(#""answers":null"#), text)
@@ -77,52 +77,52 @@ final class ClientTests: XCTestCase {
 
     func testReplyNotTakenCarriesTheReason() async throws {
         let fake = FakeTransport(status: 200, body: #"{"ok": true, "taken": false, "reason": "Too many replies this hour."}"#)
-        let answer = try await client(fake).reply(id: "r-1", text: "x", answers: nil)
+        let answer = try await client(fake).reply(id: "reply-0001", text: "x", answers: nil)
         XCTAssertEqual(answer, ReplyAnswer(taken: false, reason: "Too many replies this hour."))
     }
 
     func testReplyWithOkFalseIsAServerError() async throws {
         let fake = FakeTransport(status: 200, body: #"{"ok": false, "error": "A reply needs a text and an id."}"#)
         await assertThrows(.server(status: 200, message: "A reply needs a text and an id.")) {
-            try await client(fake).reply(id: "r-1", text: "", answers: nil)
+            try await client(fake).reply(id: "reply-0001", text: "", answers: nil)
         }
     }
 
     func testReplyWithoutATokenIsNotPairedAndSendsNothing() async throws {
         let fake = FakeTransport(status: 200, body: #"{"ok": true, "taken": true}"#)
-        await assertThrows(.notPaired) { try await client(fake, token: nil).reply(id: "r", text: "x", answers: nil) }
+        await assertThrows(.notPaired) { try await client(fake, token: nil).reply(id: "reply-0002", text: "x", answers: nil) }
         XCTAssertTrue(fake.sent.isEmpty)
     }
 
     func testPressSendsTheData() async throws {
         let fake = FakeTransport(status: 200, body: #"{"ok": true, "taken": true}"#)
-        let answer = try await client(fake).press(id: "p-1", data: "lifeos-q:abc:2")
+        let answer = try await client(fake).press(id: "press-0001", data: "lifeos-q:abc:2")
         XCTAssertTrue(answer.taken)
         let request = try XCTUnwrap(fake.sent.first)
         XCTAssertEqual(request.url.path, "/api/channel/press")
         let body = json(request.body)
         XCTAssertEqual(body["channel"] as? String, "app")
-        XCTAssertEqual(body["id"] as? String, "p-1")
+        XCTAssertEqual(body["id"] as? String, "press-0001")
         XCTAssertEqual(body["data"] as? String, "lifeos-q:abc:2")
     }
 
     func testPressNotTaken() async throws {
         let fake = FakeTransport(status: 200, body: #"{"ok": true, "taken": false, "reason": "The question is closed."}"#)
-        let answer = try await client(fake).press(id: "p-1", data: "x")
+        let answer = try await client(fake).press(id: "press-0001", data: "x")
         XCTAssertEqual(answer.reason, "The question is closed.")
         XCTAssertFalse(answer.taken)
     }
 
-    // MARK: Items
+    // MARK: Messages
 
-    func testItemsDecodeEveryField() async throws {
+    func testMessagesDecodeEveryField() async throws {
         let fake = FakeTransport(status: 200, body: """
-        {"items": [
+        {"messages": [
           {"id": "m-2", "at": "2026-03-04T05:06:07Z", "text": "Line one\\nLine two", "kind": "digest", "run": "run-1", "finding": null},
           {"id": "m-1", "at": "2026-03-04T05:00:00.123+01:00", "text": "Q", "kind": "question", "run": null, "finding": "f-1"}
         ], "next": "m-1"}
         """)
-        let page = try await client(fake).items()
+        let page = try await client(fake).messages()
         XCTAssertEqual(page.items.map(\.id), ["m-2", "m-1"])
         XCTAssertEqual(page.next, "m-1")
         XCTAssertEqual(page.items[0].kind, .digest)
@@ -134,29 +134,29 @@ final class ClientTests: XCTestCase {
         XCTAssertNotNil(page.items[1].at)
         let request = try XCTUnwrap(fake.sent.first)
         XCTAssertEqual(request.method, "GET")
-        XCTAssertEqual(request.url.path, "/api/channels/app/items")
+        XCTAssertEqual(request.url.path, "/api/channels/app/messages")
         XCTAssertEqual(request.url.query, "limit=50")
         XCTAssertNil(request.body)
         XCTAssertNil(request.headers["Content-Type"])
     }
 
-    func testItemsSendBeforeAndLimit() async throws {
-        let fake = FakeTransport(status: 200, body: #"{"items": [], "next": null}"#)
-        let page = try await client(fake).items(before: "m 1+2", limit: 10)
+    func testMessagesSendBeforeAndLimit() async throws {
+        let fake = FakeTransport(status: 200, body: #"{"messages": [], "next": null}"#)
+        let page = try await client(fake).messages(before: "m 1+2", limit: 10)
         XCTAssertTrue(page.items.isEmpty)
         XCTAssertNil(page.next)
         XCTAssertEqual(fake.sent.first?.url.query, "before=m%201%2B2&limit=10")
     }
 
-    func testItemsKeepAnUnknownKindAndSkipABrokenItem() async throws {
+    func testMessagesKeepAnUnknownKindAndSkipABrokenOne() async throws {
         let fake = FakeTransport(status: 200, body: """
-        {"items": [
+        {"messages": [
           {"id": "m-3", "at": "not a time", "text": "new kind", "kind": "weather"},
           {"text": "no id"},
           {"id": 7, "text": "numeric id", "kind": "note"}
         ], "next": 7}
         """)
-        let page = try await client(fake).items()
+        let page = try await client(fake).messages()
         XCTAssertEqual(page.items.map(\.id), ["m-3", "7"])
         XCTAssertEqual(page.items[0].kind, .other("weather"))
         XCTAssertEqual(page.items[0].kind.label, "Meddelande")
@@ -164,14 +164,20 @@ final class ClientTests: XCTestCase {
         XCTAssertEqual(page.next, "7")
     }
 
-    func testItemsWithoutAListAreUnreadable() async throws {
-        let fake = FakeTransport(status: 200, body: #"{"messages": "nope"}"#)
-        await assertThrows(.unreadable) { try await client(fake).items() }
+    func testTheEarlyItemsNameIsStillRead() async throws {
+        let fake = FakeTransport(status: 200, body: #"{"items": [{"id": "m-1", "text": "x", "kind": "note"}], "next": null}"#)
+        let page = try await client(fake).messages()
+        XCTAssertEqual(page.items.map(\.id), ["m-1"])
     }
 
-    func testItemsThatAreNotJSONAreUnreadable() async throws {
+    func testMessagesWithoutAListAreUnreadable() async throws {
+        let fake = FakeTransport(status: 200, body: #"{"messages": "nope"}"#)
+        await assertThrows(.unreadable) { try await client(fake).messages() }
+    }
+
+    func testMessagesThatAreNotJSONAreUnreadable() async throws {
         let fake = FakeTransport(status: 200, body: "<html>")
-        await assertThrows(.unreadable) { try await client(fake).items() }
+        await assertThrows(.unreadable) { try await client(fake).messages() }
     }
 
     // MARK: Terminal
@@ -227,7 +233,7 @@ final class ClientTests: XCTestCase {
     func testRegisterPushRefusesABadTokenBeforeSending() async throws {
         let fake = FakeTransport(status: 200, body: #"{"registered": true}"#)
         for bad in ["", String(repeating: "AB", count: 32), String(repeating: "a", count: 63), String(repeating: "g", count: 64)] {
-            await assertThrows(.server(status: 0, message: "The push token is not 64 hex letters.")) {
+            await assertThrows(.invalid("The push token is not 64 lowercase hex letters.")) {
                 try await client(fake).registerPush(token: bad)
             }
         }
@@ -249,34 +255,34 @@ final class ClientTests: XCTestCase {
 
     func testUnauthorizedIsNotPairedOnEveryRoute() async throws {
         let body = #"{"error": "Pair this device first.", "pair": true}"#
-        await assertThrows(.notPaired) { try await client(FakeTransport(status: 401, body: body)).items() }
+        await assertThrows(.notPaired) { try await client(FakeTransport(status: 401, body: body)).messages() }
         await assertThrows(.notPaired) { try await client(FakeTransport(status: 401, body: body)).terminal() }
-        await assertThrows(.notPaired) { try await client(FakeTransport(status: 401, body: body)).reply(id: "r", text: "x", answers: nil) }
-        await assertThrows(.notPaired) { try await client(FakeTransport(status: 401, body: body)).press(id: "p", data: "d") }
+        await assertThrows(.notPaired) { try await client(FakeTransport(status: 401, body: body)).reply(id: "reply-0002", text: "x", answers: nil) }
+        await assertThrows(.notPaired) { try await client(FakeTransport(status: 401, body: body)).press(id: "press-0002", data: "d") }
         await assertThrows(.notPaired) {
             try await client(FakeTransport(status: 401, body: body)).registerPush(token: String(repeating: "0", count: 64))
         }
     }
 
     func testUnauthorizedWithoutABodyIsStillNotPaired() async throws {
-        await assertThrows(.notPaired) { try await client(FakeTransport(status: 401, body: "")).items() }
+        await assertThrows(.notPaired) { try await client(FakeTransport(status: 401, body: "")).messages() }
     }
 
     func testOfflineOnEveryRoute() async throws {
-        await assertThrows(.offline) { try await client(FakeTransport([.fail])).items() }
+        await assertThrows(.offline) { try await client(FakeTransport([.fail])).messages() }
         await assertThrows(.offline) { try await client(FakeTransport([.fail])).terminal() }
-        await assertThrows(.offline) { try await client(FakeTransport([.fail])).reply(id: "r", text: "x", answers: nil) }
-        await assertThrows(.offline) { try await client(FakeTransport([.fail])).press(id: "p", data: "d") }
+        await assertThrows(.offline) { try await client(FakeTransport([.fail])).reply(id: "reply-0002", text: "x", answers: nil) }
+        await assertThrows(.offline) { try await client(FakeTransport([.fail])).press(id: "press-0002", data: "d") }
         await assertThrows(.offline) { try await client(FakeTransport([.fail])).registerPush(token: String(repeating: "0", count: 64)) }
     }
 
     func testServerErrorsCarryTheSentence() async throws {
         let body = #"{"error": "The body must be JSON."}"#
         await assertThrows(.server(status: 415, message: "The body must be JSON.")) {
-            try await client(FakeTransport(status: 415, body: body)).reply(id: "r", text: "x", answers: nil)
+            try await client(FakeTransport(status: 415, body: body)).reply(id: "reply-0002", text: "x", answers: nil)
         }
         await assertThrows(.server(status: 403, message: "The body must be JSON.")) {
-            try await client(FakeTransport(status: 403, body: body)).items()
+            try await client(FakeTransport(status: 403, body: body)).messages()
         }
         await assertThrows(.server(status: 500, message: "")) {
             try await client(FakeTransport(status: 500, body: "Internal error")).terminal()
@@ -289,6 +295,47 @@ final class ClientTests: XCTestCase {
         XCTAssertFalse(ClientError.server(status: 400, message: "").isRetryable)
         XCTAssertFalse(ClientError.notPaired.isRetryable)
         XCTAssertFalse(ClientError.unreadable.isRetryable)
+        XCTAssertFalse(ClientError.invalid("x").isRetryable)
+    }
+
+    // MARK: Local checks
+
+    func testReplyIdsTheKernelAccepts() {
+        XCTAssertTrue(ReplyID.isValid(ReplyID.make()))
+        XCTAssertEqual(ReplyID.make().count, 36)
+        XCTAssertTrue(ReplyID.isValid("Abc-1234"))
+        XCTAssertTrue(ReplyID.isValid(String(repeating: "a", count: 64)))
+        XCTAssertFalse(ReplyID.isValid("abc-123"))
+        XCTAssertFalse(ReplyID.isValid(String(repeating: "a", count: 65)))
+        XCTAssertFalse(ReplyID.isValid("reply_0001"))
+        XCTAssertFalse(ReplyID.isValid("reply 0001"))
+        XCTAssertFalse(ReplyID.isValid("räply-0001"))
+    }
+
+    func testABadReplyIdIsRefusedBeforeSending() async {
+        let fake = FakeTransport(status: 200, body: #"{"ok": true, "taken": true}"#)
+        await assertThrows(.invalid("A reply id is 8 to 64 letters, digits, or hyphens.")) {
+            try await client(fake).reply(id: "short", text: "x", answers: nil)
+        }
+        await assertThrows(.invalid("A reply id is 8 to 64 letters, digits, or hyphens.")) {
+            try await client(fake).press(id: "has space in it", data: "x")
+        }
+        XCTAssertTrue(fake.sent.isEmpty)
+    }
+
+    func testTextOver64KiBIsRefusedBeforeSending() async throws {
+        let fake = FakeTransport([.answer(200, #"{"ok": true, "taken": true}"#)])
+        let limit = String(repeating: "a", count: Client.maxTextBytes)
+        _ = try await client(fake).reply(id: "reply-0001", text: limit, answers: nil)
+        // "ä" is two bytes in UTF-8, so half the count already reaches the cap.
+        let over = String(repeating: "ä", count: Client.maxTextBytes / 2) + "a"
+        await assertThrows(.invalid("The text is longer than 64 KiB.")) {
+            try await client(fake).reply(id: "reply-0002", text: over, answers: nil)
+        }
+        await assertThrows(.invalid("The text is longer than 64 KiB.")) {
+            try await client(fake).press(id: "press-0001", data: over)
+        }
+        XCTAssertEqual(fake.sent.count, 1)
     }
 
     // MARK: URLs

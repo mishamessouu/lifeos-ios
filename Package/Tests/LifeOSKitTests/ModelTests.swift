@@ -30,6 +30,12 @@ final class ModelTests: XCTestCase {
         let item = SentMessage(id: "1", at: nil, text: "\nOne\n\n  Two  \nThree\nFour", kind: .digest)
         XCTAssertEqual(item.preview(), "One\nTwo\nThree")
         XCTAssertEqual(item.preview(lines: 1), "One")
+        XCTAssertEqual(item.title, "One")
+        XCTAssertEqual(item.rest(), "Two\nThree")
+        XCTAssertEqual(item.rest(lines: 5), "Two\nThree\nFour")
+        let empty = SentMessage(id: "2", at: nil, text: " \n ", kind: .note)
+        XCTAssertEqual(empty.title, "")
+        XCTAssertEqual(empty.rest(), "")
     }
 
     func testTimesWithAndWithoutFractions() {

@@ -8,7 +8,9 @@ public struct OutboundReply: Identifiable, Hashable, Sendable, Codable {
         case unsent
         /// The kernel took it.
         case sent
-        /// The kernel answered and did not take it. `reason` says why.
+        /// The kernel answered and did not take it, or the app could not
+        /// send it as written. `reason` holds the kernel's own sentence,
+        /// for example when the message it answers is no longer open.
         case refused
     }
 
@@ -24,7 +26,7 @@ public struct OutboundReply: Identifiable, Hashable, Sendable, Codable {
     public var attempts: Int
 
     public init(
-        id: String = UUID().uuidString.lowercased(), text: String, answers: String?,
+        id: String = ReplyID.make(), text: String, answers: String?,
         createdAt: Date = Date(), state: State = .unsent, reason: String? = nil, attempts: Int = 0
     ) {
         self.id = id
@@ -56,10 +58,15 @@ public actor ReplyQueue {
     public var all: [OutboundReply] { replies }
     public var unsent: [OutboundReply] { replies.filter { $0.state == .unsent } }
 
-    /// Adds one reply and writes the queue before anything is sent.
+    /// Adds one reply and writes the queue before anything is sent. Throws
+    /// `ClientError.invalid` for an empty text or one over 64 KiB.
     @discardableResult
     public func enqueue(text: String, answers: String?, now: Date = Date()) throws -> OutboundReply {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { throw ClientError.invalid("The reply is empty.") }
+        guard trimmed.utf8.count <= Client.maxTextBytes else {
+            throw ClientError.invalid("The text is longer than 64 KiB.")
+        }
         let reply = OutboundReply(text: trimmed, answers: answers, createdAt: now)
         replies.append(reply)
         try persist()
@@ -99,7 +106,11 @@ public actor ReplyQueue {
                     // The kernel will not take this reply as written; resending changes nothing.
                     update(reply.id) {
                         $0.state = .refused
-                        if case .server(_, let message) = error, !message.isEmpty { $0.reason = message }
+                        switch error {
+                        case .server(_, let message) where !message.isEmpty: $0.reason = message
+                        case .invalid(let words): $0.reason = words
+                        default: break
+                        }
                     }
                 }
             } catch {

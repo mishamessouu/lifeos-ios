@@ -120,13 +120,24 @@ public struct SentMessage: Identifiable, Hashable, Sendable, Codable {
         try c.encodeIfPresent(finding, forKey: .finding)
     }
 
-    /// The first lines of the text, for one list row.
-    public func preview(lines: Int = 3) -> String {
-        let kept = text
-            .split(separator: "\n", omittingEmptySubsequences: true)
-            .prefix(lines)
+    /// The non-empty lines of the text, trimmed.
+    var lines: [String] {
+        text.split(separator: "\n", omittingEmptySubsequences: true)
             .map { $0.trimmingCharacters(in: .whitespaces) }
-        return kept.joined(separator: "\n")
+            .filter { !$0.isEmpty }
+    }
+
+    /// The first lines of the text, for one list row.
+    public func preview(lines count: Int = 3) -> String {
+        lines.prefix(count).joined(separator: "\n")
+    }
+
+    /// The first line, which a row shows in bold, the way Mail shows a subject.
+    public var title: String { lines.first ?? "" }
+
+    /// The lines after the title, for the secondary preview under it.
+    public func rest(lines count: Int = 2) -> String {
+        lines.dropFirst().prefix(count).joined(separator: "\n")
     }
 }
 

@@ -10,13 +10,15 @@ public enum ClientError: Error, Hashable, Sendable {
     case server(status: Int, message: String)
     /// The kernel answered 2xx with a body this build cannot read.
     case unreadable
+    /// The app refused the request before sending it: the words say why.
+    case invalid(String)
 
     /// A 5xx answer may pass on a retry; a 4xx answer will not.
     public var isRetryable: Bool {
         switch self {
         case .offline: true
         case .server(let status, _): status >= 500
-        case .notPaired, .unreadable: false
+        case .notPaired, .unreadable, .invalid: false
         }
     }
 }
@@ -31,6 +33,8 @@ public struct Pairing: Hashable, Sendable {
 public struct Client: Sendable {
     public static let channel = "app"
     public static let pageLimit = 50
+    /// The kernel reads at most this many bytes of reply or press text.
+    public static let maxTextBytes = 64 * 1024
 
     public let kernel: URL
     public let token: String?
@@ -60,23 +64,25 @@ public struct Client: Sendable {
 
     /// `POST /api/channel/reply`. The same id sent again is taken once.
     public func reply(id: String, text: String, answers: String?) async throws -> ReplyAnswer {
+        try Client.check(id: id, text: text)
         let body = Wire.ReplyBody(channel: Client.channel, id: id, text: text, answers: answers)
         return try taken(try await call("POST", "api/channel/reply", body: try encode(body)))
     }
 
     /// `POST /api/channel/press`. `data` is what one button carried.
     public func press(id: String, data: String) async throws -> ReplyAnswer {
+        try Client.check(id: id, text: data)
         let body = Wire.PressBody(channel: Client.channel, id: id, data: data)
         return try taken(try await call("POST", "api/channel/press", body: try encode(body)))
     }
 
-    /// `GET /api/channels/app/items`, newest first.
-    public func items(before: String? = nil, limit: Int = Client.pageLimit) async throws -> Page<SentMessage> {
-        let data = try await call("GET", "api/channels/\(Client.channel)/items", query: paging(before, limit))
-        guard let page = try? JSONDecoder().decode(Wire.ItemsPage.self, from: data) else {
+    /// `GET /api/channels/app/messages`, newest first.
+    public func messages(before: String? = nil, limit: Int = Client.pageLimit) async throws -> Page<SentMessage> {
+        let data = try await call("GET", "api/channels/\(Client.channel)/messages", query: paging(before, limit))
+        guard let page = try? JSONDecoder().decode(Wire.MessagesPage.self, from: data) else {
             throw ClientError.unreadable
         }
-        return Page(items: page.items.elements, next: page.next)
+        return Page(items: page.messages, next: page.next)
     }
 
     /// `GET /api/terminal`, newest first as the kernel pages it.
@@ -91,7 +97,7 @@ public struct Client: Sendable {
     /// `POST /api/push/register` with the APNs device token as 64 lowercase hex letters.
     public func registerPush(token: String) async throws {
         guard PushToken.isValid(token) else {
-            throw ClientError.server(status: 0, message: "The push token is not 64 hex letters.")
+            throw ClientError.invalid("The push token is not 64 lowercase hex letters.")
         }
         let data = try await call("POST", "api/push/register", body: try encode(Wire.PushBody(token: token)))
         guard let answer = try? JSONDecoder().decode(Wire.PushAnswer.self, from: data),
@@ -100,6 +106,16 @@ public struct Client: Sendable {
     }
 
     // MARK: Plumbing
+
+    /// Refuses what the kernel would refuse, before it leaves the phone.
+    static func check(id: String, text: String) throws {
+        guard ReplyID.isValid(id) else {
+            throw ClientError.invalid("A reply id is 8 to 64 letters, digits, or hyphens.")
+        }
+        guard text.utf8.count <= maxTextBytes else {
+            throw ClientError.invalid("The text is longer than 64 KiB.")
+        }
+    }
 
     private func paging(_ before: String?, _ limit: Int) -> [URLQueryItem] {
         var query = [URLQueryItem(name: "limit", value: String(max(1, limit)))]
@@ -170,5 +186,18 @@ public enum PushToken {
 
     public static func isValid(_ text: String) -> Bool {
         text.count == 64 && text.allSatisfy { ("0"..."9").contains($0) || ("a"..."f").contains($0) }
+    }
+}
+
+/// The client id of one reply or press: 8 to 64 ASCII letters, digits, or hyphens.
+public enum ReplyID {
+    public static func make() -> String {
+        UUID().uuidString.lowercased()
+    }
+
+    public static func isValid(_ id: String) -> Bool {
+        (8...64).contains(id.count) && id.unicodeScalars.allSatisfy { scalar in
+            ("a"..."z").contains(scalar) || ("A"..."Z").contains(scalar) || ("0"..."9").contains(scalar) || scalar == "-"
+        }
     }
 }
