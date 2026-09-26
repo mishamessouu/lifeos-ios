@@ -1,5 +1,6 @@
 import LifeOSKit
 import SwiftUI
+import UIKit
 
 /// The Terminal: turns as bubbles, newest at the bottom, and a field that
 /// sends a plain entry to the Assistant.

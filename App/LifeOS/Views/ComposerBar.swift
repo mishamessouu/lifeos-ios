@@ -1,5 +1,6 @@
 import LifeOSKit
 import SwiftUI
+import UIKit
 
 /// The compose bar pinned to the bottom: a growing field and one trailing
 /// send button, as in Messages.

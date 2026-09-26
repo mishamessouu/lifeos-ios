@@ -14,7 +14,8 @@ final class PairingScreenTests: XCTestCase {
         app.launchArguments = ["-lifeos-ui-test"]
         app.launch()
 
-        let field = app.textFields["pairing.link"]
+        // A vertical TextField shows as a text view, so match any element type.
+        let field = app.descendants(matching: .any)["pairing.link"]
         XCTAssertTrue(field.waitForExistence(timeout: 15))
         XCTAssertTrue(app.buttons["pairing.button"].exists)
 

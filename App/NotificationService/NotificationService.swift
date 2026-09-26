@@ -1,3 +1,4 @@
+import Foundation
 import UserNotifications
 
 /// Sets the generic body on every push and hands it on at once. It never

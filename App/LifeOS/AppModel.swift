@@ -14,23 +14,23 @@ final class AppModel {
     /// Set when a UI test launches the app: memory Keychain, empty files.
     static let isUITest = ProcessInfo.processInfo.arguments.contains("-lifeos-ui-test")
 
-    private(set) var credentials: Credentials?
+    private(set) var credentials: Credentials? = nil
     private(set) var messages = CursorList<SentMessage>()
     private(set) var turns = CursorList<TerminalTurn>()
     private(set) var replies: [OutboundReply] = []
     /// One Swedish line about the last failure, or nil.
-    private(set) var status: String?
-    private(set) var notificationsAllowed: Bool?
+    private(set) var status: String? = nil
+    private(set) var notificationsAllowed: Bool? = nil
 
-    @ObservationIgnored private let credentialStore: CredentialStore
-    @ObservationIgnored private let queue: ReplyQueue
-    @ObservationIgnored private let messageFile: JSONFile<CursorList<SentMessage>>
-    @ObservationIgnored private let turnFile: JSONFile<CursorList<TerminalTurn>>
-    @ObservationIgnored private let transport: any Transport
-    @ObservationIgnored private var pushToken: String?
+    private let credentialStore: CredentialStore
+    private let queue: ReplyQueue
+    private let messageFile: JSONFile<CursorList<SentMessage>>
+    private let turnFile: JSONFile<CursorList<TerminalTurn>>
+    private let transport: any Transport
+    @ObservationIgnored private var pushToken: String? = nil
     @ObservationIgnored private var loadingOlderMessages = false
     @ObservationIgnored private var loadingOlderTurns = false
-    @ObservationIgnored private var followUp: Task<Void, Never>?
+    @ObservationIgnored private var followUp: Task<Void, Never>? = nil
 
     /// Items kept on disk between launches.
     static let cachedItems = 200
@@ -148,6 +148,9 @@ final class AppModel {
         status = nil
         messages = CursorList()
         turns = CursorList()
+        if let pushToken {
+            await pushTokenArrived(pushToken)
+        }
         await registerForPush()
         await flush()
         await refreshMessages()
