@@ -22,17 +22,26 @@ struct SystemKeychain: KeychainStore {
         return result as? Data
     }
 
+    /// Updates the item in place, and adds it only when none exists, so a
+    /// failed add can never leave the app without its token.
     func write(_ data: Data, for key: String) throws {
-        try delete(key)
-        let item: [String: Any] = [
+        let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: key,
-            kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
-            kSecValueData as String: data,
         ]
-        let status = SecItemAdd(item as CFDictionary, nil)
-        guard status == errSecSuccess else { throw KeychainFailure(status: status) }
+        let changes: [String: Any] = [
+            kSecValueData as String: data,
+            kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
+        ]
+        let updated = SecItemUpdate(query as CFDictionary, changes as CFDictionary)
+        if updated == errSecSuccess { return }
+        guard updated == errSecItemNotFound else { throw KeychainFailure(status: updated) }
+        var item = query
+        item[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
+        item[kSecValueData as String] = data
+        let added = SecItemAdd(item as CFDictionary, nil)
+        guard added == errSecSuccess else { throw KeychainFailure(status: added) }
     }
 
     func delete(_ key: String) throws {

@@ -80,7 +80,7 @@ struct SettingsView: View {
             }
             .confirmationDialog(Copy.unpairQuestion, isPresented: $confirmUnpair, titleVisibility: .visible) {
                 Button(Copy.unpair, role: .destructive) {
-                    model.unpair()
+                    Task { await model.unpair() }
                 }
             }
         }

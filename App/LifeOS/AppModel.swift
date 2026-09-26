@@ -32,6 +32,11 @@ final class AppModel {
     @ObservationIgnored private var loadingOlderTurns = false
     @ObservationIgnored private var followUp: Task<Void, Never>? = nil
     @ObservationIgnored private var pushFetch: Task<Void, Never>? = nil
+    /// Moves on every pairing and every reset. Work that awaited checks it
+    /// before it writes, so a refresh in flight cannot write back after unpair.
+    @ObservationIgnored private var generation = 0
+    /// True when the last older page failed, so the list offers a retry.
+    private(set) var olderMessagesFailed = false
 
     /// Items kept on disk between launches.
     static let cachedItems = 200
@@ -51,12 +56,19 @@ final class AppModel {
         }
         try? ProtectedFiles.prepare(directory: directory)
         credentialStore = CredentialStore(keychain: keychain)
-        queue = ReplyQueue(directory: directory)
         messageFile = JSONFile(directory: directory, name: "messages.json")
         turnFile = JSONFile(directory: directory, name: "terminal.json")
         transport = URLSessionTransport()
-        credentials = credentialStore.load()
-        if credentials != nil {
+        let stored = credentialStore.load()
+        if stored == nil {
+            // No token means nothing on disk may outlive it.
+            messageFile.delete()
+            turnFile.delete()
+            ReplyQueue.deleteFile(in: directory)
+        }
+        queue = ReplyQueue(directory: directory)
+        credentials = stored
+        if stored != nil {
             messages = messageFile.load() ?? CursorList()
             turns = turnFile.load() ?? CursorList()
         }
@@ -159,9 +171,10 @@ final class AppModel {
         do {
             try credentialStore.save(saved)
         } catch {
-            status = Copy.saveFailed
+            status = Copy.keySaveFailed
             return false
         }
+        generation += 1
         credentials = saved
         status = nil
         messages = CursorList()
@@ -175,19 +188,29 @@ final class AppModel {
         return true
     }
 
-    /// Forgets the token, the caches, and the queue on this phone. The box
-    /// keeps the device until the person revokes it there.
-    func unpair() {
+    /// Unpair on this phone. The box keeps the device until the person
+    /// revokes it there.
+    func unpair() async {
+        await resetEverything()
+        status = nil
+    }
+
+    /// The one place that forgets everything: the token and the kernel
+    /// address (one Keychain item), messages.json, terminal.json, and
+    /// replies.json. Used by unpair and by a 401 that asks to pair again.
+    func resetEverything() async {
+        generation += 1
+        pushFetch?.cancel()
+        followUp?.cancel()
         try? credentialStore.forget()
         credentials = nil
         messages = CursorList()
         turns = CursorList()
         replies = []
-        status = nil
+        olderMessagesFailed = false
         messageFile.delete()
         turnFile.delete()
-        let queue = self.queue
-        Task { await queue.clear() }
+        await queue.clear()
     }
 
     /// Moves the app to another kernel address with the same token.
@@ -197,7 +220,7 @@ final class AppModel {
         do {
             try credentialStore.save(current)
         } catch {
-            status = Copy.saveFailed
+            status = Copy.keySaveFailed
             return false
         }
         credentials = current
@@ -208,14 +231,17 @@ final class AppModel {
 
     func refreshMessages() async {
         guard let client else { return }
+        let started = generation
         do {
             let merged = try await NewestLoader.refresh(messages) { before, limit in
                 try await client.messages(before: before, limit: limit)
             }
+            guard started == generation else { return }
             messages = merged
             status = nil
             try? messageFile.save(merged.trimmed(to: AppModel.cachedItems))
         } catch {
+            guard started == generation else { return }
             handle(error)
         }
     }
@@ -223,11 +249,16 @@ final class AppModel {
     func loadOlderMessages() async {
         guard let client, let before = messages.next, !loadingOlderMessages else { return }
         loadingOlderMessages = true
+        olderMessagesFailed = false
         defer { loadingOlderMessages = false }
+        let started = generation
         do {
             let page = try await client.messages(before: before)
+            guard started == generation else { return }
             messages.appendOlder(page)
         } catch {
+            guard started == generation else { return }
+            olderMessagesFailed = true
             handle(error)
         }
     }
@@ -236,14 +267,17 @@ final class AppModel {
 
     func refreshTerminal() async {
         guard let client else { return }
+        let started = generation
         do {
             let merged = try await NewestLoader.refresh(turns) { before, limit in
                 try await client.terminal(before: before, limit: limit)
             }
+            guard started == generation else { return }
             turns = merged
             status = nil
             try? turnFile.save(merged.trimmed(to: AppModel.cachedItems))
         } catch {
+            guard started == generation else { return }
             handle(error)
         }
     }
@@ -252,10 +286,13 @@ final class AppModel {
         guard let client, let before = turns.next, !loadingOlderTurns else { return }
         loadingOlderTurns = true
         defer { loadingOlderTurns = false }
+        let started = generation
         do {
             let page = try await client.terminal(before: before)
+            guard started == generation else { return }
             turns.appendOlder(page)
         } catch {
+            guard started == generation else { return }
             handle(error)
         }
     }
@@ -273,7 +310,7 @@ final class AppModel {
             status = Copy.tooLong
             return
         } catch {
-            status = Copy.saveFailed
+            status = Copy.replySaveFailed
             return
         }
         await reloadReplies()
@@ -284,19 +321,19 @@ final class AppModel {
     }
 
     /// A text reply from a notification. The push names no message, so the
-    /// reply answers the newest message the kernel lists when it arrives.
+    /// reply is a Terminal entry (`answers` nil). It goes to the queue on
+    /// disk first, then out.
     func replyFromNotification(_ text: String) async {
-        await refreshMessages()
-        await send(text, answers: messages.newestID)
+        await send(text, answers: nil)
     }
 
+    /// Försök igen: the same queued reply, with the same id.
     func retry(_ reply: OutboundReply) async {
-        guard reply.state == .refused else {
-            await flush()
-            return
+        if reply.state == .refused {
+            _ = try? await queue.requeue(id: reply.id)
+            await reloadReplies()
         }
-        try? await queue.discard(id: reply.id)
-        await send(reply.text, answers: reply.answers)
+        await flush()
     }
 
     func discard(_ reply: OutboundReply) async {
@@ -306,7 +343,9 @@ final class AppModel {
 
     func flush() async {
         guard let client else { return }
+        let started = generation
         let stop = await queue.flush(using: client)
+        guard started == generation else { return }
         await reloadReplies()
         if let stop {
             handle(stop)
@@ -344,9 +383,13 @@ final class AppModel {
     func pushTokenArrived(_ hex: String) async {
         pushToken = hex
         guard let client else { return }
+        let started = generation
         do {
             try await client.registerPush(token: hex)
+        } catch ClientError.invalid(_) {
+            status = Copy.badPushToken
         } catch {
+            guard started == generation else { return }
             handle(error)
         }
     }
@@ -371,9 +414,13 @@ final class AppModel {
             return
         }
         if error == .notPaired {
-            // 401 means the box no longer knows this token: pair again.
-            try? credentialStore.forget()
-            credentials = nil
+            // 401 with pair true: the box no longer knows this token. Forget
+            // everything, then show why on the pairing screen.
+            Task {
+                await self.resetEverything()
+                self.status = Copy.notPaired
+            }
+            return
         }
         status = line(for: error)
     }

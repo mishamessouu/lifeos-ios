@@ -259,6 +259,14 @@ final class ReplyQueueTests: XCTestCase {
         XCTAssertTrue(empty.isEmpty)
     }
 
+    func testDeleteFileRemovesTheQueueBeforeItOpens() async throws {
+        let directory = temporaryDirectory()
+        try await ReplyQueue(directory: directory).enqueue(text: "x", answers: nil)
+        ReplyQueue.deleteFile(in: directory)
+        let all = await ReplyQueue(directory: directory).all
+        XCTAssertTrue(all.isEmpty)
+    }
+
     func testABrokenFileStartsAnEmptyQueue() async throws {
         let directory = temporaryDirectory()
         try Data("not json".utf8).write(to: directory.appendingPathComponent("replies.json"))

@@ -44,6 +44,12 @@ newer:
 
 GitHub Actions runs the same tests on every pull request.
 
+## Running on a phone
+
+The app entitlements set `aps-environment` to `production`, so only
+TestFlight builds from Xcode Cloud run on a phone. A debug run from Xcode
+needs a development entitlements file, which does not exist yet.
+
 ## Regenerate the project
 
 Run this after any change to `project.yml` or to the files under `App/`,

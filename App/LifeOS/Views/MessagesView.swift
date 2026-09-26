@@ -31,16 +31,27 @@ struct MessagesView: View {
                     }
                 }
                 if model.messages.hasMore {
-                    HStack {
-                        Spacer()
-                        ProgressView()
-                        Spacer()
-                    }
-                    .listRowSeparator(.hidden)
-                    // A new cursor makes a new row, so the next page loads when it shows.
-                    .id(model.messages.next ?? "end")
-                    .task {
-                        await model.loadOlderMessages()
+                    if model.olderMessagesFailed {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(Copy.loadOlderFailed)
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                            Button(Copy.tryAgain) {
+                                Task { await model.loadOlderMessages() }
+                            }
+                        }
+                    } else {
+                        HStack {
+                            Spacer()
+                            ProgressView()
+                            Spacer()
+                        }
+                        .listRowSeparator(.hidden)
+                        // A new cursor makes a new row, so the next page loads when it shows.
+                        .id(model.messages.next ?? "end")
+                        .task {
+                            await model.loadOlderMessages()
+                        }
                     }
                 }
             }

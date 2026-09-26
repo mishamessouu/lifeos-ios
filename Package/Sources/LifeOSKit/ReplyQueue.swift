@@ -50,8 +50,15 @@ public actor ReplyQueue {
     private var replies: [OutboundReply]
     private var flushing = false
 
+    public static let fileName = "replies.json"
+
+    /// Deletes the queue file in a directory, before any queue opens it.
+    public static func deleteFile(in directory: URL) {
+        JSONFile<[OutboundReply]>(directory: directory, name: fileName).delete()
+    }
+
     public init(directory: URL) {
-        file = JSONFile(directory: directory, name: "replies.json")
+        file = JSONFile(directory: directory, name: ReplyQueue.fileName)
         replies = file.load() ?? []
     }
 

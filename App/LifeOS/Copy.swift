@@ -18,7 +18,7 @@ enum Copy {
     static let pairButton = "Parkoppla"
     static let badCode = "Det ser inte ut som en länk eller kod från LifeOS."
     static let badAddress = "Adressen måste börja med https://."
-    static let codeRefused = "Koden fungerade inte. Den kan vara använd eller för gammal. Skapa en ny på boxen."
+    static let codeRefused = "Koden fungerade inte. Antingen är koden fel, använd eller för gammal, eller så är adressen fel. Skapa en ny kod på boxen och kontrollera adressen."
 
     // Messages
     static let messagesTitle = "Meddelanden"
@@ -35,6 +35,9 @@ enum Copy {
     static let refused = "Avvisat"
     static let tryAgain = "Försök igen"
     static let delete = "Ta bort"
+
+    static let toTerminalLine = "Det här meddelandet går inte att svara på längre. Texten går till Terminalen."
+    static let loadOlderFailed = "Äldre meddelanden gick inte att hämta."
 
     // Terminal
     static let terminalTitle = "Terminal"
@@ -58,7 +61,7 @@ enum Copy {
     static let openSettings = "Öppna Inställningar"
     static let unpair = "Koppla från"
     static let unpairQuestion = "Koppla från den här iPhonen?"
-    static let unpairFooter = "Appen glömmer sin nyckel och sina meddelanden. Återkalla enheten på boxen med python -m kernel shell revoke."
+    static let unpairFooter = "Appen glömmer nyckel, adress, meddelanden och osända svar. Återkalla enheten på boxen med python -m kernel shell revoke."
 
     // Status lines
     static let offline = "Ingen kontakt med LifeOS. Appen försöker igen senare."
@@ -66,6 +69,8 @@ enum Copy {
     static let unreadable = "Svaret från LifeOS gick inte att läsa."
     static let serverFailed = "LifeOS svarade med ett fel."
     static let tooLong = "Texten går inte att skicka. Den är tom eller för lång."
-    static let saveFailed = "Svaret gick inte att spara på telefonen."
+    static let keySaveFailed = "Nyckeln gick inte att spara i nyckelringen."
+    static let replySaveFailed = "Svaret gick inte att spara på telefonen."
+    static let badPushToken = "Telefonen gav en ogiltig notisnyckel. Notiser kommer inte fram."
     static func server(_ sentence: String) -> String { "LifeOS svarade: \(sentence)" }
 }
