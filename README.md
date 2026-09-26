@@ -5,8 +5,10 @@ self-hosted, agentic operating system for one person's life. The app is
 one Channel: notifications out, replies in. It talks to the person's own
 LifeOS kernel over their tailnet and to nothing else.
 
-Status: no app code yet. The first build does three things: notifications,
-one list, and text reply.
+Status: the first app. Pairing, the list of Sent messages, a detail view
+with reply, the Terminal, settings, push registration, and a text reply
+from a notification. See `docs/handover.md` for what is tested and what
+is not.
 
 ## How it ships
 
@@ -16,10 +18,37 @@ TestFlight. GitHub holds no signing secret.
 
 ## Layout
 
-- `Package/` holds every rule as a Swift package: models, the client, the
-  reply grammar, and decryption. It builds and tests on Linux.
-- `App/` holds the thin SwiftUI layer and the notification extension.
-- `project.yml` generates the Xcode project with XcodeGen.
+- `Package/` holds every rule as the Swift package `LifeOSKit`: models,
+  JSON decoding, the client, the pair link parser, the reply queue, the
+  cursor merge, and the fetch plan. It builds and tests on Linux.
+- `App/LifeOS/` holds the thin SwiftUI app. `App/NotificationService/`
+  holds the notification service extension. `App/UITests/` holds one UI
+  test that keeps a screenshot of the pairing screen.
+- `project.yml` generates `LifeOS.xcodeproj` with XcodeGen. Both are
+  committed.
+- `Config/Team.xcconfig` names the signing team. `ci_scripts/` runs in
+  Xcode Cloud.
+- `docs/design.md` names each borrowed design pattern and its source.
+  `docs/xcode-cloud.md` is the one-time Xcode Cloud setup.
+- `scripts/make-icon.py` draws the app icon.
+
+## Test the package
+
+These commands run the package tests on Linux or a Mac with Swift 6.0 or
+newer:
+
+    cd Package
+    swift build
+    swift test
+
+GitHub Actions runs the same tests on every pull request.
+
+## Regenerate the project
+
+Run this after any change to `project.yml` or to the files under `App/`,
+then commit the result with the change:
+
+    xcodegen generate
 
 ## Rules
 
