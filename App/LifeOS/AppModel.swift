@@ -31,6 +31,7 @@ final class AppModel {
     @ObservationIgnored private var loadingOlderMessages = false
     @ObservationIgnored private var loadingOlderTurns = false
     @ObservationIgnored private var followUp: Task<Void, Never>? = nil
+    @ObservationIgnored private var pushFetch: Task<Void, Never>? = nil
 
     /// Items kept on disk between launches.
     static let cachedItems = 200
@@ -94,14 +95,31 @@ final class AppModel {
         await registerForPush()
     }
 
+    /// Every return to the foreground sends the queue and fetches once (FetchPlan).
     func becameActive() async {
         guard credentials != nil else { return }
         await flush()
-        await refreshMessages()
+        await FetchPlan.run(.foreground) {
+            await self.fetchNewest()
+        }
     }
 
+    /// A push fetches at once and again three seconds later (FetchPlan), since
+    /// the kernel may mark the message delivered only after the push returns.
+    /// A newer push replaces the wait of an older one.
     func pushArrived() async {
         guard credentials != nil else { return }
+        pushFetch?.cancel()
+        let plan = Task { @MainActor [weak self] in
+            await FetchPlan.run(.push) {
+                await self?.fetchNewest()
+            }
+        }
+        pushFetch = plan
+        await plan.value
+    }
+
+    private func fetchNewest() async {
         await refreshMessages()
         await refreshTerminal()
     }

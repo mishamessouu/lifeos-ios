@@ -3,6 +3,7 @@ import SwiftUI
 import UIKit
 
 /// The device, the kernel address, notifications, and unpair.
+@MainActor
 struct SettingsView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.openURL) private var openURL

@@ -4,6 +4,7 @@ import UIKit
 
 /// The Terminal: turns as bubbles, newest at the bottom, and a field that
 /// sends a plain entry to the Assistant.
+@MainActor
 struct TerminalView: View {
     @Environment(AppModel.self) private var model
     private let bottom = "terminal-bottom"

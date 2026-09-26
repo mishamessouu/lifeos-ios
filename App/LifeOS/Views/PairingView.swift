@@ -2,6 +2,7 @@ import LifeOSKit
 import SwiftUI
 
 /// Paste the link the box prints, or type the code. Scanning a QR code is a later step.
+@MainActor
 struct PairingView: View {
     @Environment(AppModel.self) private var model
     @State private var link = ""
