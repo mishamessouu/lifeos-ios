@@ -71,3 +71,37 @@ final class DisplayTests: XCTestCase {
         XCTAssertEqual(LinkText.segments("javascript:alert(1) ftp://x.example"), [.text("javascript:alert(1) ftp://x.example")])
     }
 }
+
+final class DayGroupTests: XCTestCase {
+    var calendar: Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.locale = Locale(identifier: "sv_SE")
+        calendar.timeZone = TimeZone(identifier: "Europe/Stockholm")!
+        return calendar
+    }
+
+    func item(_ id: String, _ at: String?) -> SentMessage {
+        SentMessage(id: id, at: at, text: id, kind: .note)
+    }
+
+    func testDaysGetTheirTitlesInOrder() {
+        let now = KernelTime.parse("2026-03-04T12:00:00+01:00")!
+        let items = [
+            item("a", "2026-03-04T09:00:00+01:00"),
+            item("b", "2026-03-04T00:30:00+01:00"),
+            item("c", "2026-03-03T22:00:00+01:00"),
+            item("d", "2026-03-01T10:00:00+01:00"),
+            item("e", nil),
+            item("f", "2026-02-01T10:00:00+01:00"),
+        ]
+        let groups = DayGroup.group(items, date: \.at, now: now, calendar: calendar)
+        XCTAssertEqual(groups.map(\.title).prefix(4), ["Idag", "Igår", "Söndag", "Utan tid"])
+        XCTAssertTrue(groups[4].title.hasPrefix("1 feb"))
+        XCTAssertEqual(groups.map { $0.items.map(\.id) }, [["a", "b"], ["c"], ["d"], ["e"], ["f"]])
+        XCTAssertEqual(Set(groups.map(\.id)).count, groups.count)
+    }
+
+    func testNoItemsNoGroups() {
+        XCTAssertTrue(DayGroup<SentMessage>.group([], date: \.at).isEmpty)
+    }
+}

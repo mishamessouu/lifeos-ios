@@ -91,3 +91,53 @@ public enum LinkText {
         return segments
     }
 }
+
+/// Groups a newest-first list into days for section headers, the way
+/// Reminders and Things 3 split one list into named parts.
+public struct DayGroup<Item: Identifiable & Hashable & Sendable>: Identifiable, Hashable, Sendable where Item.ID == String {
+    /// The start of the day, or nil for items with no readable time.
+    public let day: Date?
+    public let title: String
+    public let items: [Item]
+
+    public var id: String { items.first.map { "day-\($0.id)" } ?? title }
+
+    public init(day: Date?, title: String, items: [Item]) {
+        self.day = day
+        self.title = title
+        self.items = items
+    }
+
+    /// Keeps the order it is given. A new group starts whenever the day changes.
+    public static func group(
+        _ items: [Item], date: (Item) -> Date?, now: Date = Date(), calendar: Calendar = RowTime.calendar
+    ) -> [DayGroup] {
+        var groups: [DayGroup] = []
+        var current: [Item] = []
+        var currentDay: Date?
+        func close() {
+            guard !current.isEmpty else { return }
+            groups.append(DayGroup(day: currentDay, title: title(for: currentDay, now: now, calendar: calendar), items: current))
+            current = []
+        }
+        for item in items {
+            let day = date(item).map { calendar.startOfDay(for: $0) }
+            if !current.isEmpty && day != currentDay {
+                close()
+            }
+            currentDay = day
+            current.append(item)
+        }
+        close()
+        return groups
+    }
+
+    /// "Idag", "Igår", the weekday within a week, else the date.
+    public static func title(for day: Date?, now: Date = Date(), calendar: Calendar = RowTime.calendar) -> String {
+        guard let day else { return "Utan tid" }
+        if calendar.isDate(day, inSameDayAs: now) { return "Idag" }
+        let text = RowTime.text(for: day, now: now, calendar: calendar)
+        if text == "igår" { return "Igår" }
+        return text.prefix(1).uppercased() + text.dropFirst()
+    }
+}
