@@ -27,6 +27,9 @@ final class AppModel {
     private let messageFile: JSONFile<CursorList<SentMessage>>
     private let turnFile: JSONFile<CursorList<TerminalTurn>>
     private let transport: any Transport
+    /// True while the Keychain refused the credentials read, for example on a
+    /// launch before the first unlock. The files stay, and the app reads again.
+    @ObservationIgnored private var credentialsUnreadable = false
     @ObservationIgnored private var pushToken: String? = nil
     @ObservationIgnored private var loadingOlderMessages = false
     @ObservationIgnored private var loadingOlderTurns = false
@@ -59,18 +62,44 @@ final class AppModel {
         messageFile = JSONFile(directory: directory, name: "messages.json")
         turnFile = JSONFile(directory: directory, name: "terminal.json")
         transport = URLSessionTransport()
-        let stored = credentialStore.load()
-        if stored == nil {
+        let read = credentialStore.read()
+        if read.dropsCachedFiles {
             // No token means nothing on disk may outlive it.
             messageFile.delete()
             turnFile.delete()
             ReplyQueue.deleteFile(in: directory)
         }
         queue = ReplyQueue(directory: directory)
-        credentials = stored
-        if stored != nil {
+        credentialsUnreadable = read == .unreadable
+        if case .found(let stored) = read {
+            credentials = stored
             messages = messageFile.load() ?? CursorList()
             turns = turnFile.load() ?? CursorList()
+        }
+    }
+
+    /// Reads the credentials again after an unreadable launch read. Returns
+    /// true when the app is now paired.
+    private func readCredentialsAgain() async -> Bool {
+        guard credentials == nil, credentialsUnreadable else { return credentials != nil }
+        let read = credentialStore.read()
+        switch read {
+        case .unreadable:
+            return false
+        case .absent:
+            credentialsUnreadable = false
+            messageFile.delete()
+            turnFile.delete()
+            await queue.clear()
+            await reloadReplies()
+            return false
+        case .found(let stored):
+            credentialsUnreadable = false
+            generation += 1
+            credentials = stored
+            messages = messageFile.load() ?? CursorList()
+            turns = turnFile.load() ?? CursorList()
+            return true
         }
     }
 
@@ -103,13 +132,13 @@ final class AppModel {
 
     func launched() async {
         await reloadReplies()
-        guard credentials != nil else { return }
+        guard await readCredentialsAgain() else { return }
         await registerForPush()
     }
 
     /// Every return to the foreground sends the queue and fetches once (FetchPlan).
     func becameActive() async {
-        guard credentials != nil else { return }
+        guard await readCredentialsAgain() else { return }
         await flush()
         await FetchPlan.run(.foreground) {
             await self.fetchNewest()
@@ -175,6 +204,7 @@ final class AppModel {
             return false
         }
         generation += 1
+        credentialsUnreadable = false
         credentials = saved
         status = nil
         messages = CursorList()
@@ -203,6 +233,7 @@ final class AppModel {
         pushFetch?.cancel()
         followUp?.cancel()
         try? credentialStore.forget()
+        credentialsUnreadable = false
         credentials = nil
         messages = CursorList()
         turns = CursorList()
@@ -387,6 +418,7 @@ final class AppModel {
         do {
             try await client.registerPush(token: hex)
         } catch ClientError.invalid(_) {
+            guard started == generation else { return }
             status = Copy.badPushToken
         } catch {
             guard started == generation else { return }

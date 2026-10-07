@@ -47,6 +47,23 @@ public struct Credentials: Hashable, Sendable, Codable {
     }
 }
 
+/// What one read of the credentials found.
+public enum CredentialRead: Hashable, Sendable {
+    /// The item is there and decodes.
+    case found(Credentials)
+    /// No item, or an item that does not decode: there is no usable token.
+    case absent
+    /// The Keychain refused the read, for example while the device is locked.
+    /// The token may still be there.
+    case unreadable
+
+    /// Files kept for a token (messages, Terminal turns, the reply queue) may
+    /// go only when no token exists. An unreadable item keeps them.
+    public var dropsCachedFiles: Bool {
+        self == .absent
+    }
+}
+
 /// Keeps the credentials as one Keychain item, so they change together.
 public struct CredentialStore: Sendable {
     public static let key = "credentials"
@@ -56,9 +73,26 @@ public struct CredentialStore: Sendable {
         self.keychain = keychain
     }
 
+    /// Reads the one item and says which of three cases holds. A Keychain
+    /// error is `unreadable`, not `absent`: iOS refuses the read while the
+    /// device is locked, and the token is still there.
+    public func read() -> CredentialRead {
+        let data: Data?
+        do {
+            data = try keychain.read(Self.key)
+        } catch {
+            return .unreadable
+        }
+        guard let data, let credentials = try? JSONDecoder().decode(Credentials.self, from: data) else {
+            return .absent
+        }
+        return .found(credentials)
+    }
+
+    /// The credentials, or nil when they are absent or cannot be read now.
     public func load() -> Credentials? {
-        guard let data = try? keychain.read(Self.key) else { return nil }
-        return try? JSONDecoder().decode(Credentials.self, from: data)
+        if case .found(let credentials) = read() { return credentials }
+        return nil
     }
 
     public func save(_ credentials: Credentials) throws {

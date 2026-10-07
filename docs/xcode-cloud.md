@@ -1,6 +1,6 @@
 # Xcode Cloud setup
 
-Status: for the person, once, after the first pull request is merged. It
+Status: for the person, once. The first pull request is merged. It
 makes step C of the LifeOS setup checklist concrete for this project.
 Steps A and B (the App ID, the App Group, the app record, the TestFlight
 group `Phone`) must be done first.
