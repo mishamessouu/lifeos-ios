@@ -418,6 +418,7 @@ final class AppModel {
         do {
             try await client.registerPush(token: hex)
         } catch ClientError.invalid(_) {
+            guard started == generation else { return }
             status = Copy.badPushToken
         } catch {
             guard started == generation else { return }
