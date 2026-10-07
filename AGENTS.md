@@ -17,7 +17,10 @@ The iPhone app for LifeOS. Public repository, MIT.
   and commit both.
 - Use the LifeOS words: Channel, Sent message, Finding, Digest, Question,
   Terminal, Paired device, Run, Assistant.
-- Swedish for every string the person sees, in `App/LifeOS/Copy.swift`.
+- Swedish for every string the person sees. App strings go in
+  `App/LifeOS/Copy.swift`. Labels that a package rule picks (kind labels,
+  day and time words) stay in LifeOSKit, with their tests. The extension
+  keeps its one fallback body in `NotificationService.swift`.
   English for code, comments, commits, and docs.
 - Design: system fonts, Dynamic Type, SF Symbols, standard containers.
   Name the source of each borrowed pattern in `docs/design.md`.

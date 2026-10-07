@@ -29,7 +29,9 @@ workflow, made once on a Mac.
   - `CredentialStore` over the `KeychainStore` protocol, `MemoryKeychain`
     for tests, `JSONFile` and `ProtectedFiles` for the cache.
 - `App/`: the SwiftUI app, the notification service extension, one UI
-  test. Swedish strings in `App/LifeOS/Copy.swift`.
+  test. Swedish strings in `App/LifeOS/Copy.swift`, except the labels
+  that package rules pick (`Kind.label`, `RowTime`, `DayGroup`) and the
+  extension's fallback body.
 - `project.yml` and the generated `LifeOS.xcodeproj`, committed.
   XcodeGen 2.46.0 was built from source on the Linux box.
 - `.github/workflows/test.yml`: package tests on pull requests.
