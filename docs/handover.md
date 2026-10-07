@@ -1,7 +1,9 @@
 # Handover
 
-Status: 2026-09-26, branch `first-app`. The first app, lane C of the
-native app plan in the LifeOS repository.
+Status: 2026-10-07. `main` holds the first app, merged at `eb98551`
+(pull request #1). It is lane C of the native app plan in the LifeOS
+repository. The next gate is setup step C: the first Xcode Cloud
+workflow, made once on a Mac.
 
 ## What exists
 
@@ -65,6 +67,9 @@ native app plan in the LifeOS repository.
 - A 401 with `pair: true`, and unpair, call one reset: the Keychain item
   (token and kernel address), `messages.json`, `terminal.json`, and
   `replies.json`. A launch with no token deletes the three files too. A
+  Keychain error is not "no token": iOS refuses the read while the phone
+  is locked. Then the files stay, and the app reads the Keychain again
+  on launch and on each return to the foreground. A
   generation counter stops a refresh in flight from writing back.
 - A 2xx the app cannot read keeps the reply unsent with its id. Försök
   igen resends the same id. Redirects are refused, so the bearer token
@@ -88,6 +93,12 @@ native app plan in the LifeOS repository.
 5. Question cards with buttons over the press route.
 6. Payload decryption in the extension (threat model items O2 to O4).
 7. Raise the app to Swift 6 language mode.
+8. Drop the older-page cursor on a 400 `UNKNOWN_BEFORE` ("The before id
+   names no message here."). The kernel prunes old Sent messages (LifeOS
+   `docs/plans/sent-retention.md`, row 177), so a kept cursor can name a
+   message that is gone. Today the app keeps `next` and only shows the
+   retry line, for messages and for Terminal turns. Put the rule in the
+   package, with a test.
 
 ## Horizon
 
