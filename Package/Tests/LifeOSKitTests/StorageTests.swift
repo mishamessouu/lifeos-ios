@@ -22,6 +22,24 @@ final class StorageTests: XCTestCase {
         XCTAssertNil(CredentialStore(keychain: keychain).load())
     }
 
+    func testCredentialReadSaysWhichCaseHolds() throws {
+        let keychain = MemoryKeychain()
+        let store = CredentialStore(keychain: keychain)
+        XCTAssertEqual(store.read(), .absent)
+        XCTAssertTrue(store.read().dropsCachedFiles)
+        let credentials = Credentials(kernel: kernelURL, token: "tok", deviceID: "0123456789ab", deviceName: "iPhone")
+        try store.save(credentials)
+        XCTAssertEqual(store.read(), .found(credentials))
+        XCTAssertFalse(store.read().dropsCachedFiles)
+    }
+
+    func testKeychainErrorIsUnreadableAndKeepsFiles() {
+        let store = CredentialStore(keychain: LockedKeychain())
+        XCTAssertEqual(store.read(), .unreadable)
+        XCTAssertFalse(store.read().dropsCachedFiles)
+        XCTAssertNil(store.load())
+    }
+
     func testMemoryKeychainKeepsKeysApart() throws {
         let keychain = MemoryKeychain()
         try keychain.write(Data("a".utf8), for: "one")
@@ -50,4 +68,13 @@ final class StorageTests: XCTestCase {
         let names = try FileManager.default.contentsOfDirectory(atPath: directory.path)
         XCTAssertEqual(names, ["x.json"])
     }
+}
+
+/// A Keychain that refuses every call, as iOS does for a
+/// `WhenUnlockedThisDeviceOnly` item while the device is locked.
+private struct LockedKeychain: KeychainStore {
+    struct Locked: Error {}
+    func read(_ key: String) throws -> Data? { throw Locked() }
+    func write(_ data: Data, for key: String) throws { throw Locked() }
+    func delete(_ key: String) throws { throw Locked() }
 }
