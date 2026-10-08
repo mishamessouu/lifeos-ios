@@ -7,7 +7,7 @@ workflow, made once on a Mac.
 
 ## What exists
 
-- `Package/` (LifeOSKit). Tested on Linux with Swift 6.4, 124 tests.
+- `Package/` (LifeOSKit). Tested on Linux with Swift 6.2, 136 tests.
   - Models: `SentMessage`, `TerminalTurn`, `PairedDevice`, `Kind`, `Role`,
     `Page`. Unknown kinds and roles decode instead of failing. A broken
     item is skipped; the page still loads.
@@ -28,6 +28,8 @@ workflow, made once on a Mac.
   - `RowTime`, `DayGroup`, `LinkText`: Swedish times, day sections, links.
   - `CredentialStore` over the `KeychainStore` protocol, `MemoryKeychain`
     for tests, `JSONFile` and `ProtectedFiles` for the cache.
+  - `CachedState`: the credentials read on launch and again later, and
+    which files stay or go. `AppModel` only applies its result.
 - `App/`: the SwiftUI app, the notification service extension, one UI
   test. Swedish strings in `App/LifeOS/Copy.swift`, except the labels
   that package rules pick (`Kind.label`, `RowTime`, `DayGroup`) and the
@@ -38,9 +40,12 @@ workflow, made once on a Mac.
 
 ## What is not tested
 
-- Nothing under `App/` has compiled. There is no Mac or Xcode on the box.
-  One read-through and one review agent found no compile error. The first
-  Xcode Cloud build is the first compile.
+- Nothing under `App/` has compiled for iOS. There is no Mac or Xcode on
+  the box. `AppModel.swift` and `Copy.swift` type-check on Linux against
+  LifeOSKit with stub `UIKit` and `UserNotifications` modules
+  (`scripts/typecheck-app.sh`); the views
+  and the extension do not. The first Xcode Cloud build is the first
+  real compile.
 - The Keychain store, file protection, the backup flag, push
   registration, the notification action, and the extension have never
   run on a phone.
@@ -71,7 +76,11 @@ workflow, made once on a Mac.
   `replies.json`. A launch with no token deletes the three files too. A
   Keychain error is not "no token": iOS refuses the read while the phone
   is locked. Then the files stay, and the app reads the Keychain again
-  on launch and on each return to the foreground. A
+  on launch and on each return to the foreground. The read that finds
+  the credentials restores the files and registers for push. The reply
+  queue tells a refused file read from a missing file: until a read
+  works, it sends nothing and writes nothing. A new pairing deletes the
+  files of any earlier pairing. A
   generation counter stops a refresh in flight from writing back.
 - A 2xx the app cannot read keeps the reply unsent with its id. Försök
   igen resends the same id. Redirects are refused, so the bearer token

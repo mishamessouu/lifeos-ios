@@ -33,7 +33,7 @@ final class StorageTests: XCTestCase {
         XCTAssertFalse(store.read().dropsCachedFiles)
     }
 
-    func testKeychainErrorIsUnreadableAndKeepsFiles() {
+    func testKeychainErrorIsUnreadable() {
         let store = CredentialStore(keychain: LockedKeychain())
         XCTAssertEqual(store.read(), .unreadable)
         XCTAssertFalse(store.read().dropsCachedFiles)
