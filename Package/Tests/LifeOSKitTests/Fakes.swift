@@ -77,3 +77,14 @@ func assertThrows<T>(
         XCTFail("Expected \(expected), got \(error).", file: file, line: line)
     }
 }
+
+/// Makes a file unreadable, as iOS does for a protected file while the
+/// phone is locked. Skips the test as root, since root reads it anyway.
+func refuseReads(_ url: URL) throws {
+    if getuid() == 0 { throw XCTSkip("Root reads a file with mode 000.") }
+    try FileManager.default.setAttributes([.posixPermissions: 0], ofItemAtPath: url.path)
+}
+
+func allowReads(_ url: URL) throws {
+    try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+}

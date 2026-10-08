@@ -34,9 +34,27 @@ public struct JSONFile<Value: Codable & Sendable>: Sendable {
         url = directory.appendingPathComponent(name, isDirectory: false)
     }
 
+    /// What one read of the file found.
+    public enum Read {
+        case value(Value)
+        /// No file, or a file that does not decode.
+        case none
+        /// The file is there, and the system refused the read. iOS does this
+        /// for a file with complete protection while the phone is locked.
+        case refused
+    }
+
+    public func read() -> Read {
+        guard let data = ProtectedFiles.read(url) else {
+            return FileManager.default.fileExists(atPath: url.path) ? .refused : .none
+        }
+        guard let value = try? JSONDecoder().decode(Value.self, from: data) else { return .none }
+        return .value(value)
+    }
+
     public func load() -> Value? {
-        guard let data = ProtectedFiles.read(url) else { return nil }
-        return try? JSONDecoder().decode(Value.self, from: data)
+        if case .value(let value) = read() { return value }
+        return nil
     }
 
     public func save(_ value: Value) throws {

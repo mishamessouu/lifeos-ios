@@ -277,6 +277,59 @@ final class ReplyQueueTests: XCTestCase {
         let reopened = await ReplyQueue(directory: directory).all
         XCTAssertEqual(reopened.count, 1)
     }
+
+    // iOS refuses to read a file with complete protection while the phone
+    // is locked. Mode 000 refuses the read the same way for a user that is
+    // not root.
+
+    func testAQueueOpenedWhileTheFileIsRefusedDoesNotOverwriteItOnFlush() async throws {
+        let directory = temporaryDirectory()
+        let reply = try await ReplyQueue(directory: directory).enqueue(text: "läst 2", answers: nil)
+        let url = directory.appendingPathComponent(ReplyQueue.fileName)
+        try refuseReads(url)
+        let queue = ReplyQueue(directory: directory)
+        try allowReads(url)
+        // The phone is unlocked now. The first flush must send the reply
+        // from the file, not write the empty list over it.
+        let online = FakeTransport(status: 200, body: #"{"ok": true, "taken": true}"#)
+        let stop = await queue.flush(using: client(online))
+        XCTAssertNil(stop)
+        XCTAssertEqual(online.sent.map { json($0.body)["id"] as? String }, [reply.id])
+        let reopened = await ReplyQueue(directory: directory).all
+        XCTAssertEqual(reopened.map(\.id), [reply.id])
+        XCTAssertEqual(reopened.first?.state, .sent)
+    }
+
+    func testAQueueOpenedWhileTheFileIsRefusedKeepsOldRepliesOnEnqueue() async throws {
+        let directory = temporaryDirectory()
+        let old = try await ReplyQueue(directory: directory).enqueue(text: "a", answers: nil)
+        let url = directory.appendingPathComponent(ReplyQueue.fileName)
+        try refuseReads(url)
+        let queue = ReplyQueue(directory: directory)
+        try allowReads(url)
+        let new = try await queue.enqueue(text: "b", answers: nil)
+        let reopened = await ReplyQueue(directory: directory).all
+        XCTAssertEqual(reopened.map(\.id), [old.id, new.id])
+    }
+
+    func testAQueueWritesNothingWhileTheFileIsStillRefused() async throws {
+        let directory = temporaryDirectory()
+        let old = try await ReplyQueue(directory: directory).enqueue(text: "a", answers: nil)
+        let url = directory.appendingPathComponent(ReplyQueue.fileName)
+        try refuseReads(url)
+        defer { try? allowReads(url) }
+        let queue = ReplyQueue(directory: directory)
+        let fake = FakeTransport(status: 200, body: #"{"ok": true, "taken": true}"#)
+        _ = await queue.flush(using: client(fake))
+        XCTAssertTrue(fake.sent.isEmpty)
+        do {
+            try await queue.enqueue(text: "b", answers: nil)
+            XCTFail("A queue that could not read its file took a reply.")
+        } catch {}
+        try allowReads(url)
+        let reopened = await ReplyQueue(directory: directory).all
+        XCTAssertEqual(reopened.map(\.id), [old.id])
+    }
 }
 
 actor Gate {

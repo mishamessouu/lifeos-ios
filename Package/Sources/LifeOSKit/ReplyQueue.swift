@@ -48,6 +48,10 @@ public actor ReplyQueue {
 
     private let file: JSONFile<[OutboundReply]>
     private var replies: [OutboundReply]
+    /// False while the system refuses to read the file, for example on a
+    /// launch before the first unlock. The queue then sends nothing and
+    /// writes nothing, so the replies on disk are not lost.
+    private var loaded: Bool
     private var flushing = false
 
     public static let fileName = "replies.json"
@@ -59,7 +63,32 @@ public actor ReplyQueue {
 
     public init(directory: URL) {
         file = JSONFile(directory: directory, name: ReplyQueue.fileName)
-        replies = file.load() ?? []
+        switch file.read() {
+        case .value(let stored):
+            (replies, loaded) = (stored, true)
+        case .none:
+            (replies, loaded) = ([], true)
+        case .refused:
+            (replies, loaded) = ([], false)
+        }
+    }
+
+    /// Reads the file when no read has worked yet. Returns true when the
+    /// queue holds what the file holds. Every change and every flush calls
+    /// it first; the app also calls it once the phone is unlocked.
+    @discardableResult
+    public func reload() -> Bool {
+        guard !loaded else { return true }
+        switch file.read() {
+        case .refused:
+            return false
+        case .value(let stored):
+            replies = stored
+        case .none:
+            replies = []
+        }
+        loaded = true
+        return true
     }
 
     public var all: [OutboundReply] { replies }
@@ -74,6 +103,7 @@ public actor ReplyQueue {
         guard trimmed.utf8.count <= Client.maxTextBytes else {
             throw ClientError.invalid("The text is longer than 64 KiB.")
         }
+        guard reload() else { throw QueueFileRefused() }
         let reply = OutboundReply(text: trimmed, answers: answers, createdAt: now)
         replies.append(reply)
         try persist()
@@ -81,11 +111,13 @@ public actor ReplyQueue {
     }
 
     /// Sends every unsent reply in order. Returns the error that stopped it,
-    /// or nil when the queue is empty of unsent replies.
+    /// or nil when the queue is empty of unsent replies or cannot read its
+    /// file yet.
     @discardableResult
     public func flush(
         send: (OutboundReply) async throws -> ReplyAnswer
     ) async -> ClientError? {
+        guard reload() else { return nil }
         // One flush at a time. A second caller returns at once; the running
         // flush already sends every unsent reply.
         guard !flushing else { return nil }
@@ -145,6 +177,7 @@ public actor ReplyQueue {
     /// flush sends it. Returns false when no refused reply has that id.
     @discardableResult
     public func requeue(id: String) throws -> Bool {
+        guard reload() else { throw QueueFileRefused() }
         guard let index = replies.firstIndex(where: { $0.id == id }), replies[index].state == .refused else {
             return false
         }
@@ -156,6 +189,7 @@ public actor ReplyQueue {
 
     /// Drops a reply the person gave up on.
     public func discard(id: String) throws {
+        guard reload() else { throw QueueFileRefused() }
         replies.removeAll { $0.id == id }
         try persist()
     }
@@ -163,6 +197,7 @@ public actor ReplyQueue {
     /// Empties the queue, for unpair.
     public func clear() {
         replies = []
+        loaded = true
         file.delete()
     }
 
@@ -179,6 +214,10 @@ public actor ReplyQueue {
     }
 
     private func persist() throws {
+        guard loaded else { throw QueueFileRefused() }
         try file.save(replies)
     }
 }
+
+/// The queue file is there, and the system refuses to read it now.
+public struct QueueFileRefused: Error, Sendable {}
