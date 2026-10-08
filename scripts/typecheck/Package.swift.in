@@ -1,0 +1,15 @@
+// swift-tools-version: 6.0
+import PackageDescription
+// Written by scripts/typecheck-app.sh. It type-checks AppModel.swift on
+// Linux against LifeOSKit with stub UIKit and UserNotifications modules.
+let package = Package(
+    name: "AppCheck",
+    dependencies: [.package(path: "REPO/Package")],
+    targets: [
+        .target(name: "UIKit"),
+        .target(name: "UserNotifications"),
+        .target(name: "AppCheck",
+                dependencies: ["UIKit", "UserNotifications", .product(name: "LifeOSKit", package: "Package")],
+                swiftSettings: [.swiftLanguageMode(.v5)]),
+    ]
+)
