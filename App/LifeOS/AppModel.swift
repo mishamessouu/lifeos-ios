@@ -22,14 +22,11 @@ final class AppModel {
     private(set) var status: String? = nil
     private(set) var notificationsAllowed: Bool? = nil
 
-    private let credentialStore: CredentialStore
-    private let queue: ReplyQueue
-    private let messageFile: JSONFile<CursorList<SentMessage>>
-    private let turnFile: JSONFile<CursorList<TerminalTurn>>
+    /// The credentials and the files kept for them. The rule about which
+    /// files stay on a refused read lives there, in LifeOSKit, with tests.
+    private let cache: CachedState
+    private var queue: ReplyQueue { cache.queue }
     private let transport: any Transport
-    /// True while the Keychain refused the credentials read, for example on a
-    /// launch before the first unlock. The files stay, and the app reads again.
-    @ObservationIgnored private var credentialsUnreadable = false
     @ObservationIgnored private var pushToken: String? = nil
     @ObservationIgnored private var loadingOlderMessages = false
     @ObservationIgnored private var loadingOlderTurns = false
@@ -57,48 +54,34 @@ final class AppModel {
             directory = support.appendingPathComponent("LifeOS", isDirectory: true)
             keychain = SystemKeychain()
         }
-        try? ProtectedFiles.prepare(directory: directory)
-        credentialStore = CredentialStore(keychain: keychain)
-        messageFile = JSONFile(directory: directory, name: "messages.json")
-        turnFile = JSONFile(directory: directory, name: "terminal.json")
+        cache = CachedState(directory: directory, keychain: keychain)
         transport = URLSessionTransport()
-        let read = credentialStore.read()
-        if read.dropsCachedFiles {
-            // No token means nothing on disk may outlive it.
-            messageFile.delete()
-            turnFile.delete()
-            ReplyQueue.deleteFile(in: directory)
-        }
-        queue = ReplyQueue(directory: directory)
-        credentialsUnreadable = read == .unreadable
-        if case .found(let stored) = read {
+        if case .paired(let stored, let cachedMessages, let cachedTurns) = cache.launch {
             credentials = stored
-            messages = messageFile.load() ?? CursorList()
-            turns = turnFile.load() ?? CursorList()
+            messages = cachedMessages
+            turns = cachedTurns
         }
     }
 
-    /// Reads the credentials again after an unreadable launch read. Returns
-    /// true when the app is now paired.
+    /// Reads the credentials again after a refused launch read. Returns
+    /// true when the app is paired. When this read is the one that finds
+    /// the credentials, it also does the launch work the refused read
+    /// skipped: the reply queue from disk and push registration.
     private func readCredentialsAgain() async -> Bool {
-        guard credentials == nil, credentialsUnreadable else { return credentials != nil }
-        let read = credentialStore.read()
-        switch read {
-        case .unreadable:
+        guard let restore = await cache.readAgain() else { return credentials != nil }
+        switch restore {
+        case .waiting:
             return false
-        case .absent:
-            credentialsUnreadable = false
-            messageFile.delete()
-            turnFile.delete()
-            await queue.clear()
+        case .unpaired:
             await reloadReplies()
             return false
-        case .found(let stored):
-            credentialsUnreadable = false
+        case .paired(let stored, let cachedMessages, let cachedTurns):
             generation += 1
             credentials = stored
-            messages = messageFile.load() ?? CursorList()
-            turns = turnFile.load() ?? CursorList()
+            messages = cachedMessages
+            turns = cachedTurns
+            await reloadReplies()
+            await registerForPush()
             return true
         }
     }
@@ -132,7 +115,10 @@ final class AppModel {
 
     func launched() async {
         await reloadReplies()
-        guard await readCredentialsAgain() else { return }
+        // A refused launch read registers in readCredentialsAgain, on the
+        // read that finds the credentials.
+        let launchFound = !cache.waiting
+        guard await readCredentialsAgain(), launchFound else { return }
         await registerForPush()
     }
 
@@ -198,17 +184,19 @@ final class AppModel {
             deviceID: pairing.device.id, deviceName: pairing.device.name
         )
         do {
-            try credentialStore.save(saved)
+            // Drops the files of any earlier pairing, so nothing on disk
+            // outlives its token.
+            try await cache.pair(saved)
         } catch {
             status = Copy.keySaveFailed
             return false
         }
         generation += 1
-        credentialsUnreadable = false
         credentials = saved
         status = nil
         messages = CursorList()
         turns = CursorList()
+        await reloadReplies()
         if let pushToken {
             await pushTokenArrived(pushToken)
         }
@@ -232,16 +220,12 @@ final class AppModel {
         generation += 1
         pushFetch?.cancel()
         followUp?.cancel()
-        try? credentialStore.forget()
-        credentialsUnreadable = false
         credentials = nil
         messages = CursorList()
         turns = CursorList()
         replies = []
         olderMessagesFailed = false
-        messageFile.delete()
-        turnFile.delete()
-        await queue.clear()
+        await cache.forget()
     }
 
     /// Moves the app to another kernel address with the same token.
@@ -249,7 +233,7 @@ final class AppModel {
         guard var current = credentials, let kernel = KernelAddress.parse(address) else { return false }
         current.kernel = kernel
         do {
-            try credentialStore.save(current)
+            try cache.update(current)
         } catch {
             status = Copy.keySaveFailed
             return false
@@ -270,7 +254,7 @@ final class AppModel {
             guard started == generation else { return }
             messages = merged
             status = nil
-            try? messageFile.save(merged.trimmed(to: AppModel.cachedItems))
+            cache.save(messages: merged, keeping: AppModel.cachedItems)
         } catch {
             guard started == generation else { return }
             handle(error)
@@ -306,7 +290,7 @@ final class AppModel {
             guard started == generation else { return }
             turns = merged
             status = nil
-            try? turnFile.save(merged.trimmed(to: AppModel.cachedItems))
+            cache.save(turns: merged, keeping: AppModel.cachedItems)
         } catch {
             guard started == generation else { return }
             handle(error)

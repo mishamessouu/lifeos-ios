@@ -88,3 +88,26 @@ func refuseReads(_ url: URL) throws {
 func allowReads(_ url: URL) throws {
     try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
 }
+
+/// A Keychain whose reads iOS refuses while `locked` is true, as for a
+/// `WhenUnlockedThisDeviceOnly` item on a locked phone. Writes still work,
+/// so a test can also model a read error that does not go away.
+final class SwitchKeychain: KeychainStore, @unchecked Sendable {
+    struct Locked: Error {}
+    private let lock = NSLock()
+    private let memory = MemoryKeychain()
+    private var isLocked = false
+
+    var locked: Bool {
+        get { lock.lock(); defer { lock.unlock() }; return isLocked }
+        set { lock.lock(); defer { lock.unlock() }; isLocked = newValue }
+    }
+
+    func read(_ key: String) throws -> Data? {
+        if locked { throw Locked() }
+        return try memory.read(key)
+    }
+
+    func write(_ data: Data, for key: String) throws { try memory.write(data, for: key) }
+    func delete(_ key: String) throws { try memory.delete(key) }
+}
